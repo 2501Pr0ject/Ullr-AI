@@ -45,7 +45,7 @@ Status: v1.0
 | Gateway | Single decision and execution point for every tool call, reads included | Executor token, approver registry, policy |
 | Approver CLI | Displays approval requests with provenance; signs decisions | One approver private key |
 | Tools service | Simulated stateful backends. Enforces executor token, idempotency keys and version preconditions itself. Labels resources `internal`/`external`. | Simulated data, execution table |
-| Benchmark controller | Seeds and resets state, snapshots final state, runs episodes, records the audit anchor | Admin token |
+| Benchmark controller | Seeds and resets state, snapshots final state, runs episodes | Admin token |
 
 ## 3. Network and hardening
 
@@ -201,11 +201,13 @@ An approval is never restored after consumption. Any retry requires a new approv
 
 ## 9. Audit
 
-- `audit_events` SQLite table, written in the **same transaction** as the state change it records. If the insert fails, the transaction rolls back and the action does not proceed.
+- `audit_events` SQLite table, written in the **same transaction** as the security state transition it records. If the insert fails, the transaction rolls back and the action does not proceed.
 - Append-only, enforced by triggers that reject `UPDATE` and `DELETE`.
 - Each event stores `seq`, `prev_hash`, `event_hash = SHA-256(prev_hash || canonical event)` and the `policy_hash`.
-- `verify-audit` recomputes the chain. After each run, the benchmark controller records the head `(seq, event_hash)` in the run manifest. This external anchor makes truncation detectable.
+- `verify-audit` recomputes the chain and detects a modified entry.
+- Bypass measurement relies first on cross-checking the Tools service execution table against the Gateway's records, not on the audit log alone.
 - Events can be exported as JSONL.
+- Deferred: external anchoring of the chain head and truncation detection. A log truncated at its tail still verifies; this is a stated non-guarantee.
 
 ## 10. Baseline mode
 

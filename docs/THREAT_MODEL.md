@@ -94,7 +94,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 | T12 | Agent forges or launders provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored | L1 |
 | T13 | Gateway error, approval timeout or tool timeout leads to execution | ADV2, ADV3 | Fail closed on every error path | L1 |
 | T14 | Concurrent executions consume one approval twice | ADV3 | Serialized consumption transaction + Tools-side idempotency | L2 |
-| T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the state change; hash chain; external anchor of the head | L1 |
+| T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the security state transition; append-only triggers; hash chain with verification. Truncation detection and external anchoring are deferred | L1 |
 | T16 | Approval flooding to induce fatigue | ADV1, ADV3 | Limit on pending approvals per session; approval burden measured | L3 |
 | T17 | Policy changed after approval; old approval still used | Operator change + ADV1–3 | Approval bound to the policy hash; mismatch ⇒ invalidated | L1 |
 | T18 | Session becomes tainted after approval; approval still used | ADV1 | Approval bound to the session's provenance version; mismatch ⇒ invalidated | L1 |
@@ -107,7 +107,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 - **G2** An approval authorizes at most one execution of exactly one canonical action on one resource version, under one policy and one provenance state.
 - **G3** Cumulative limits hold under concurrency and across agents sharing an account.
 - **G4** Any failure in the decision path results in non-execution; any ambiguous outcome keeps the budget reserved until reconciled.
-- **G5** No state change happens without its audit event (same transaction).
+- **G5** No security state transition happens without its audit event (same transaction).
 - **G6** Provenance shown to the approver is derived by the Gateway from sources it observed, never from agent claims.
 - **G7** In the reference environment, each approval produces at most one effective execution, given H6.
 
@@ -119,3 +119,4 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 - Provenance covers only sources observed through the Gateway, at session granularity: it over-taints and cannot attribute a specific argument to a specific source.
 - Exactly-once execution is not promised for arbitrary external systems; at-most-once holds only where the downstream service enforces idempotency.
 - R0 reads can still disclose what the agent is allowed to read.
+- Truncation of the audit log is not detected: the chain head is not anchored outside the Gateway (deferred).

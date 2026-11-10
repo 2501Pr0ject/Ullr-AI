@@ -25,6 +25,8 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 | Container isolation, scripted attacker (L2) | no | no | M3 |
 | Agent loop, benchmark harness (L3) | no | no | M4 |
 | Full runs and result tables | no | no | M5 |
+| One real protocol behind the Gateway (SMTP to a local Mailpit container) | no | no | after M3, if the schedule allows |
+| External audit anchoring, truncation detection | no | no | deferred, no milestone |
 
 At this stage the repository contains no network service: nothing can be bypassed yet because nothing is executed yet. No guarantee in this document is demonstrated end to end.
 
@@ -106,7 +108,7 @@ These are design goals. Each becomes a claim only when the tests listed in secti
 | G2 | An approval authorizes at most one execution of one canonical action on one resource version, under one policy and one provenance state. |
 | G3 | Cumulative limits hold under concurrency and across agents sharing an account. |
 | G4 | Any failure in the decision path results in non-execution; an ambiguous outcome keeps the budget reserved until reconciled. |
-| G5 | No state change happens without its audit event, written in the same transaction. |
+| G5 | No security state transition happens without its audit event, written in the same transaction. |
 | G6 | Provenance shown to the approver is derived by the Gateway from sources it observed, never from agent claims. |
 | G7 | In the reference environment, each approval produces at most one effective execution, given that the Tools service enforces idempotency. |
 
@@ -118,6 +120,7 @@ These are design goals. Each becomes a claim only when the tests listed in secti
 - Provenance is tracked per session and only for sources the Gateway observed. It over-taints and cannot attribute one argument to one source.
 - At-most-once execution holds only where the downstream service enforces idempotency keys.
 - Permitted reads can disclose whatever the agent is allowed to read.
+- Truncation of the audit log is not detected; the chain head is not anchored outside the Gateway.
 
 ## 5. Design
 
@@ -137,7 +140,7 @@ Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is giv
 
 **Provenance (planned, M1–M2).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
 
-**Audit (planned, M1).** An append-only table with a hash chain, written in the same transaction as the state change it records. The head of the chain is recorded outside the Gateway after each run so that truncation is detectable.
+**Audit (planned, M1).** An append-only table with a hash chain, written in the same transaction as the security state transition it records. Verification detects a modified entry. Bypass measurement does not rest on this log alone: the Tools execution table is cross-checked against the Gateway's records.
 
 ## 6. Evaluation protocol
 
@@ -204,7 +207,7 @@ make lint        # ruff check and format check
 make test        # L1 unit tests
 ```
 
-Planned, not yet available: `make up`, `make attack` (L2), `make smoke` (L3 on three tasks) and `make eval` (L1 + L2 + L3, writing `results/` and a run manifest with the git commit, policy hash, canonicalization version, model digest, seeds and audit head).
+Planned, not yet available: `make up`, `make attack` (L2), `make smoke` (L3 on three tasks) and `make eval` (L1 + L2 + L3, writing `results/` and a run manifest with the git commit, policy hash, canonicalization version, model digest and seeds).
 
 ## 10. Related work
 
