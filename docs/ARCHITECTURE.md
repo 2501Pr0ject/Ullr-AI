@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.0
+Status: v1.1. Since v1.0: canon v1 details and the action hash (§4), sessions, in-request execution of allowed actions, decision before any Tools lookup and key resolution (§8), the approver channel (§7), and a narrower audit scope (§9). The design evolves with the implementation; the history has every change. Container isolation (§3) is not built yet.
 
 ## 1. Design principles
 
@@ -118,7 +118,9 @@ approval:
 
 ### Record
 
-`action_id`, `agent_id`, `session_id`, `tool`, `resource_id`, `resource_version`, `action_hash`, `policy_hash`, `canon_version`, `provenance_version`, provenance snapshot, `nonce` (Gateway-generated, 128 bits), `created_at`, `expires_at`, `status`.
+`action_id`, `agent_id`, `session_id`, `tool`, `resource_id`, `resource_version`, `action_hash`, `policy_hash`, `canon_version`, `provenance_version`, `nonce` (Gateway-generated, 128 bits), `created_at`, `expires_at`, `status`.
+
+The record stores the provenance version, not a copy of the sources. The external sources shown to the approver are computed from the session when pending requests are listed. They cannot differ from the state at proposal time without the version having changed, which invalidates the approval.
 
 ### Signed decision
 
@@ -224,8 +226,7 @@ Budgets use a rolling window on the Gateway clock. `RESERVED`, `HELD` and `COMMI
 - Each event stores `seq`, `prev_hash`, `event_hash = SHA-256(prev_hash || canonical event)` and the `policy_hash`.
 - `verify-audit` recomputes the chain and detects a modified entry.
 - Bypass measurement relies first on cross-checking the Tools service execution table against the Gateway's records, not on the audit log alone.
-- Events can be exported as JSONL.
-- Deferred: external anchoring of the chain head and truncation detection. A log truncated at its tail still verifies; this is a stated non-guarantee.
+- Deferred: JSONL export of events, external anchoring of the chain head and truncation detection. A log truncated at its tail still verifies; this is a stated non-guarantee.
 
 ## 10. Baseline mode
 
