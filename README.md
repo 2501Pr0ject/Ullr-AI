@@ -1,12 +1,12 @@
 # Ullr-AI
 
-Ullr enforces authorization policies on every protected action routed through its gateway, even when the agent runtime is fully compromised, provided the isolation boundary and trusted components remain intact.
+Ullr is designed to enforce authorization policies on every protected action routed through its gateway, even when the agent runtime is fully compromised, provided the isolation boundary and trusted components remain intact.
 
 **Author:** Abdelatif Touati — [github.com/2501Pr0ject](https://github.com/2501Pr0ject) · [2501project.dev](https://2501project.dev)
 
 Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award categories: financial transactions, digital system changes, delegated actions. This document is the paper; the specification lives in [`docs/`](docs/).
 
-> **Work in progress.** The design documents in `docs/` evolve with the implementation; every change is in the history. The Tools service and the Gateway, approvals included, are implemented and tested in one process. The isolated Docker stack and the scripted attacker are implemented; their first run has not completed. The benchmark does not exist. The [Status](#status) table states what exists and what is tested.
+> **Work in progress.** The design documents in `docs/` evolve with the implementation; every change is in the history. The Tools service and the Gateway, approvals included, are implemented and integration-tested. The Docker stack is configured for isolation and the scripted attacker is written; neither has completed a run. The benchmark does not exist. The [Status](#status) table states what exists and what is tested.
 
 ## Abstract
 
@@ -14,20 +14,19 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 
 ## Status
 
-| Component | Implemented | Tested | Planned |
-|---|---|---|---|
-| Canonicalization v1, tool schemas, policy loader and tier table | yes | unit | — |
-| Tools service: executor token, idempotency keys, version preconditions, admin API | yes | integration | — |
-| Gateway: admin-issued sessions, policy decision, execution of allowed (R0/R1) actions, proxied reads with provenance | yes | integration | — |
-| Audit table: append-only triggers, hash chain, `verify-audit` | yes | unit | — |
-| Approvals: signed decisions, lifecycle, execution of approved (R2) actions, budgets, reconciliation of `UNKNOWN`, approver tool | yes | integration | — |
-| Isolated Docker stack, LLM relay, session revocation, controlled faults, scripted attacker (L2) | yes | integration; L2 not yet run | first L2 run (M3) |
-| Agent loop, benchmark harness (L3) | no | no | M4 |
-| Full runs and result tables | no | no | M5 |
-| One real protocol behind the Gateway (SMTP to a local Mailpit) | no | no | after M3, if time allows |
-| External audit anchoring, truncation detection | no | no | deferred |
+| Component | Implemented | Unit-tested | Integration-tested | Container-tested | Adversarially verified |
+|---|---|---|---|---|---|
+| Canonicalization, tool schemas, policy | yes | yes | yes | no | no |
+| Tools service: executor token, idempotency keys, preconditions, admin API, fault barrier | yes | — | yes | no | no |
+| Gateway: sessions and revocation, decision, execution of allowed actions, provenance | yes | partly | yes | no | no |
+| Audit table, hash chain, `verify-audit` | yes | yes | yes | no | no |
+| Approvals: signed decisions, lifecycle, approved execution, budgets, reconciliation, approver tool | yes | signing | yes | no | no |
+| Docker stack configured for isolation, LLM relay, scripted attacker (L2) | yes | relay contract, attacker detectors | role wiring, shared SQLite | relay start-up check only | no |
+| Agent loop, benchmark harness (L3), runs and results | no | no | no | no | no |
+| One real protocol behind the Gateway (SMTP to a local Mailpit) | no, after M3 if time allows | no | no | no | no |
+| External audit anchoring, truncation detection | deferred | no | no | no | no |
 
-"Integration" means exercised through the HTTP interfaces, in one process. Until L2 runs, no claim against a compromised runtime is tested, and nothing shows the credentials are out of the agent's reach. No guarantee is demonstrated end to end.
+Levels ([`docs/EVIDENCE.md`](docs/EVIDENCE.md)): integration tests exercise the services through HTTP on one host; container-tested means observed in the running Docker stack; adversarially verified means the L2 attacker tried from inside the agent container and failed, with passing positive controls. **Not verified today:** network isolation, the placement of secrets, every guarantee against a compromised agent runtime.
 
 ## 1. Problem and motivation
 
@@ -49,7 +48,7 @@ Ullr takes the position, shared with CaMeL [3], that the security argument must 
 
 ## 2. Approach
 
-Enforcement is designed to happen outside the model, in a separate process the agent cannot modify. The components are built as separate containers on separate networks; that separation has not been attacked yet.
+Enforcement is designed to happen outside the model, in a separate process the agent cannot modify. The components are configured as separate containers on separate networks; that separation is not verified.
 
 ```
  agent ──net_agent──▶ gateway-api ──net_tools──▶ tools-executor
@@ -165,15 +164,7 @@ Gateway overhead (p50 / p95 decision latency): TBD.
 
 ## 8. Tested bypasses
 
-The full table, by guarantee then threat, is in [`docs/EVIDENCE.md`](docs/EVIDENCE.md). It separates three levels of evidence:
-
-| Level | Meaning | Current coverage |
-|---|---|---|
-| Unit | A module tested in isolation | Canonicalization, schemas, policy, audit chain, provenance |
-| Integration | Gateway and Tools service through their HTTP interfaces, in one process, with injected faults | See below |
-| End-to-end | Across the container and network isolation boundary (L2, L3) | Only the relay's start-up check against the host model server |
-
-Integration coverage per threat, with its gaps:
+The full table, by guarantee then threat, is in [`docs/EVIDENCE.md`](docs/EVIDENCE.md), with six evidence levels. Integration-tested coverage per threat, with its gaps:
 
 - T2–T5, T7, T9, T10, T13, T17, T18: refusal and, where relevant, the approved path.
 - T6, T12: forged decisions and session laundering are refused; nothing shows the approver key, channel token and session credential are out of the agent's reach.
@@ -183,7 +174,7 @@ Integration coverage per threat, with its gaps:
 - T15: tampering is rejected or detected; truncation of the tail is not.
 - T1, T20: token and route separation only. T1, direct access to the Tools service, is the core claim and is untested.
 
-L2 is implemented and has not completed a run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway.
+L2 has not completed a run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway.
 
 ## 9. Reproducibility
 
@@ -197,7 +188,7 @@ make lint        # ruff check and format check
 make test        # L1: unit and integration tests
 ```
 
-`make secrets`, `make build` and `make attack` run the isolated stack and L2 (Docker, and Ollama on the host loopback); no run has completed yet. `make smoke` and `make eval` (L3) do not exist.
+`make secrets`, `make build` and `make attack` are meant to run the Docker stack and L2 (Docker, and Ollama on the host loopback); no run has completed. `make smoke` and `make eval` (L3) do not exist.
 
 ## 10. Related work
 
@@ -207,7 +198,7 @@ make test        # L1: unit and integration tests
 
 Ullr uses the same core mechanism and does not claim it as new. It differs in assumptions and surroundings:
 
-- The agent runtime is treated as compromised (ADV3). The decision is therefore signed with a key the agent never holds, and the Gateway and the Tools service are isolated from the agent.
+- The agent runtime is treated as compromised (ADV3). The decision is therefore signed with a key the agent is not given, and the Gateway and the Tools service are designed to be isolated from the agent.
 - An approval is also bound to the resource version, the policy hash and the provenance version, and expires.
 - Failure semantics are specified: idempotency keys enforced by the Tools service, an `UNKNOWN` state reconciled before any budget release, and cumulative budgets across agents.
 
@@ -222,6 +213,8 @@ GateArena's evaluation is larger than the one planned here; Ullr has no result y
 - Provenance over-approximates per session and assumes a fresh agent context (H7): memory carried across sessions brings injected content into a clean session unobserved.
 - A refund approval is bound to the account's version: another refund on that account makes pending approvals for it stale.
 - Strict text rules reject some legitimate input: tabs, joined emoji, scripts using zero-width joiners.
+- Agent containers that share a network can exchange content and tokens outside the Gateway's view.
+- Revocation bounds authorization, not effects: an action authorized before revocation may take effect after it.
 - A real deployment must establish isolation, idempotency and preconditions for its own backends.
 
 ## References
