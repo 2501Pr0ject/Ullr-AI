@@ -1,5 +1,6 @@
 """Session issuance, session isolation and provenance laundering (T6, T12, H2)."""
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -8,14 +9,22 @@ from conftest import (
     DEFAULT_POLICY,
     EXECUTOR_TOKEN,
     GATEWAY_ADMIN_TOKEN,
+    INJECTION,
     TOOLS_ADMIN_TOKEN,
+    approved,
     audit_events,
     bearer,
+    execute,
     new_session,
+    pending_requests,
     propose,
     provenance_of,
     rows,
+    status_of,
 )
+from test_gateway_api import forwarding_transport
+from ullr_ai import storage
+from ullr_ai.gateway import app as gateway_app
 
 ADMIN = bearer(GATEWAY_ADMIN_TOKEN)
 REFUND = {"amount": "100.00", "currency": "EUR"}
@@ -318,3 +327,213 @@ def test_a_session_issued_by_the_trusted_party_starts_clean(env):
     propose(env, headers_b, "read_document", "doc_1")
     assert provenance_of(env, session_a) == (1, ["doc_2"])
     assert provenance_of(env, session_b) == (0, [])
+
+
+# --- Revocation (enforced by the Gateway, on every request) ------------------
+
+
+def revoke(env, session_id, headers=None):
+    return env.admin.post(
+        f"/admin/sessions/{session_id}/revoke", headers=ADMIN if headers is None else headers
+    )
+
+
+def test_token_lifecycle_across_two_episodes(env):
+    # R1: the current token is accepted during its episode.
+    first_session, first = new_session(env)
+    assert propose(env, first, "read_document", "doc_1").status_code == 200
+
+    # R2: it is refused once the session is revoked.
+    assert revoke(env, first_session).json() == {"session_id": first_session, "revoked": True}
+    refused = propose(env, first, "read_document", "doc_1")
+    assert refused.status_code == 401
+    assert refused.json() == {"error": "unauthorized"}
+
+    # R3: refused on every agent route, not only on proposals.
+    execute_path = f"/v1/actions/act_{'0' * 32}/execute"
+    body = {"tool": "read_document", "resource_id": "doc_1", "args": {}}
+    assert env.agent.post(execute_path, json=body, headers=first).status_code == 401
+
+    # R4: the token of the next episode is accepted.
+    second_session, second = new_session(env)
+    assert second_session != first_session
+    assert propose(env, second, "read_document", "doc_1").status_code == 200
+
+    # R5: the old token is still refused after the new one is issued.
+    assert propose(env, first, "read_document", "doc_1").status_code == 401
+    assert propose(env, first, "delete_document", "doc_1").status_code == 401
+    recorded = rows(env, "SELECT session_id FROM actions ORDER BY created_at")
+    assert [r["session_id"] for r in recorded] == [first_session, second_session]
+
+
+def test_revocation_is_recorded_and_idempotent(env):
+    session_id, _ = new_session(env)
+    assert revoke(env, session_id).status_code == 200
+    first = rows(env, "SELECT revoked_at FROM sessions")[0]["revoked_at"]
+    assert first is not None
+    assert revoke(env, session_id).status_code == 200
+    assert rows(env, "SELECT revoked_at FROM sessions")[0]["revoked_at"] == first
+    assert [e["type"] for e in audit_events(env)] == ["SESSION_CREATED", "SESSION_REVOKED"]
+
+
+@pytest.mark.parametrize(
+    "headers", [{}, bearer("wrong"), bearer(EXECUTOR_TOKEN), bearer(TOOLS_ADMIN_TOKEN)]
+)
+def test_revocation_requires_the_admin_token(env, headers):
+    session_id, agent = new_session(env)
+    assert revoke(env, session_id, headers).status_code == 401
+    assert revoke(env, session_id, agent).status_code == 401  # an agent cannot revoke
+    assert propose(env, agent, "read_document", "doc_1").status_code == 200
+
+
+def test_agent_api_has_no_revocation_route(env):
+    session_id, agent = new_session(env)
+    for headers in (agent, ADMIN):
+        response = env.agent.post(f"/admin/sessions/{session_id}/revoke", headers=headers)
+        assert response.status_code == 404
+    assert propose(env, agent, "read_document", "doc_1").status_code == 200
+
+
+@pytest.mark.parametrize("session_id", ["sess_" + "0" * 32, "sess_1", "not-a-session"])
+def test_revoking_an_unknown_session(env, session_id):
+    assert revoke(env, session_id).status_code == 404
+
+
+def test_revoked_session_cannot_be_restored_in_the_database(env):
+    session_id, _ = new_session(env)
+    revoke(env, session_id)
+    conn = storage.connect(env.gateway.db_path)
+    try:
+        for statement in (
+            "UPDATE sessions SET revoked_at = NULL",
+            "UPDATE sessions SET revoked_at = '2099-01-01T00:00:00.000000Z'",
+        ):
+            with pytest.raises(sqlite3.DatabaseError):
+                conn.execute(statement)
+    finally:
+        conn.close()
+    assert rows(env, "SELECT revoked_at FROM sessions")[0]["revoked_at"] is not None
+
+
+def test_revocation_invalidates_pending_and_approved_actions(env):
+    session_id, agent = new_session(env)
+    _, other = new_session(env)
+    approved_id = approved(env, agent, "delete_document", "doc_1")
+    pending_id = propose(env, agent, "delete_document", "doc_3").json()["action_id"]
+    untouched_id = propose(env, other, "delete_document", "doc_3").json()["action_id"]
+
+    revoke(env, session_id)
+    assert status_of(env, approved_id) == "INVALIDATED"
+    assert status_of(env, pending_id) == "INVALIDATED"
+    assert status_of(env, untouched_id) == "PENDING_APPROVAL"
+    reasons = [e["reason"] for e in audit_events(env) if e["type"] == "INVALIDATED"]
+    assert reasons == ["session_revoked", "session_revoked"]
+
+    # Neither the old token nor a new session can use the invalidated approval.
+    assert execute(env, agent, approved_id, "delete_document", "doc_1").status_code == 401
+    assert execute(env, other, approved_id, "delete_document", "doc_1").status_code == 404
+    assert [v["request"]["action_id"] for v in pending_requests(env)] == [untouched_id]
+    assert env.tools.state.executions() == []
+
+
+# A revocation that commits while a request is in progress must win: once it
+# is committed, that request records, consumes and executes nothing.
+
+
+def test_revocation_during_the_resource_lookup_records_nothing(make_env, tools):
+    holder = {}
+
+    def revoke_during_lookup(request):
+        if request.url.path.startswith("/v1/resources/"):
+            assert revoke(holder["env"], holder["session"]).status_code == 200
+
+    client, calls = forwarding_transport(tools, before=revoke_during_lookup)
+    env = holder["env"] = make_env(tools_http=client)
+    holder["session"], agent = new_session(env)
+
+    for tool, args in (("update_document", {"content": "x"}), ("delete_document", {})):
+        response = propose(env, agent, tool, "doc_1", args)
+        assert response.status_code == 401
+    assert rows(env, "SELECT * FROM actions") == []
+    assert ("POST", "/v1/execute") not in calls
+    assert tools.state.executions() == []
+    assert tools.state.snapshot()["documents"][0]["content"] == "Revenue grew."
+
+
+def test_revocation_after_authentication_blocks_a_read(env, monkeypatch):
+    session_id, agent = new_session(env)
+    original = gateway_app.parse_proposal
+
+    def revoke_then_parse(request):
+        # Runs after the request was authenticated, before its transaction.
+        assert revoke(env, session_id).status_code == 200
+        return original(request)
+
+    monkeypatch.setattr(gateway_app, "parse_proposal", revoke_then_parse)
+    response = propose(env, agent, "read_document", "doc_2")
+    assert response.status_code == 401
+    assert INJECTION not in response.text
+    assert rows(env, "SELECT * FROM actions") == []
+    assert provenance_of(env, session_id) == (0, [])
+
+
+def test_revocation_after_authentication_blocks_an_approved_execution(env, monkeypatch):
+    session_id, agent = new_session(env)
+    action_id = approved(env, agent, "issue_refund", "acct_1", REFUND)
+    original = gateway_app.parse_execution
+
+    def revoke_then_parse(request):
+        assert revoke(env, session_id).status_code == 200
+        return original(request)
+
+    monkeypatch.setattr(gateway_app, "parse_execution", revoke_then_parse)
+    response = execute(env, agent, action_id, "issue_refund", "acct_1", REFUND)
+    assert response.status_code == 401
+    assert status_of(env, action_id) == "INVALIDATED"
+    assert rows(env, "SELECT * FROM budget_reservations") == []
+    assert env.tools.state.executions() == []
+    assert env.tools.state.snapshot()["refunds"] == []
+
+
+def test_execution_already_recorded_before_revocation_completes(make_env, tools):
+    """The intent was committed while the session was valid: it is not a new action."""
+    holder = {}
+
+    def revoke_during_execution(request):
+        if request.url.path == "/v1/execute":
+            assert revoke(holder["env"], holder["session"]).status_code == 200
+
+    client, _ = forwarding_transport(tools, before=revoke_during_execution)
+    env = holder["env"] = make_env(tools_http=client)
+    holder["session"], agent = new_session(env)
+    response = propose(env, agent, "update_document", "doc_1", {"content": "v2"})
+    assert response.status_code == 200
+    assert statuses_of_all(env) == ["COMMITTED"]
+    # Nothing new starts afterwards.
+    assert propose(env, agent, "update_document", "doc_1", {"content": "v3"}).status_code == 401
+    assert tools.state.snapshot()["documents"][0]["content"] == "v2"
+
+
+def statuses_of_all(env):
+    return [r["status"] for r in rows(env, "SELECT status FROM actions ORDER BY created_at")]
+
+
+# --- Read-only state view for the controller ---------------------------------
+
+
+def test_state_view_requires_the_admin_token_and_changes_nothing(env):
+    _, agent = new_session(env)
+    propose(env, agent, "read_document", "doc_1")
+    propose(env, agent, "delete_document", "doc_1")
+    before = audit_events(env)
+    for headers in ({}, agent, bearer(EXECUTOR_TOKEN)):
+        assert env.admin.get("/admin/state", headers=headers).status_code == 401
+    assert env.agent.get("/admin/state", headers=agent).status_code == 404
+
+    view = env.admin.get("/admin/state", headers=ADMIN).json()
+    assert [a["status"] for a in view["actions"]] == ["COMMITTED", "PENDING_APPROVAL"]
+    assert view["reservations"] == []
+    assert view["audit"] == {"ok": True, "events": len(before)}
+    assert audit_events(env) == before
+    for secret in (agent["Authorization"].removeprefix("Bearer "), GATEWAY_ADMIN_TOKEN):
+        assert secret not in str(view)

@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     agent_id TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
     provenance_version INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS session_sources (
@@ -115,6 +116,14 @@ WHEN NEW.session_id IS NOT OLD.session_id
   OR NEW.token_hash IS NOT OLD.token_hash
 BEGIN
     SELECT RAISE(ABORT, 'session identity is fixed');
+END;
+
+-- A revoked session stays revoked.
+CREATE TRIGGER IF NOT EXISTS sessions_revocation_is_final
+BEFORE UPDATE ON sessions
+WHEN OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NOT OLD.revoked_at
+BEGIN
+    SELECT RAISE(ABORT, 'a revoked session cannot be restored');
 END;
 
 CREATE TRIGGER IF NOT EXISTS sessions_provenance_only_grows

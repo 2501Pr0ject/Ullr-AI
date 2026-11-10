@@ -10,6 +10,7 @@ longer execute. Only then is the budget committed or released.
 An approval is never restored: a reconciled failure stays ``FAILED``.
 """
 
+import threading
 from typing import Any
 
 from ullr_ai import storage
@@ -44,7 +45,7 @@ def reconcile(gateway: Any, *, include_executing: bool) -> dict[str, int]:
             final = "FAILED"  # a read has no effect; its content was never returned
         else:
             try:
-                status = gateway.tools.resolve_execution(
+                status = gateway._tools().resolve_execution(
                     action["execution_id"], action["tool"], action["resource_id"]
                 )
             except ToolsError:
@@ -64,3 +65,23 @@ def reconcile(gateway: Any, *, include_executing: bool) -> dict[str, int]:
             )
         counts[final] += 1
     return counts
+
+
+def start_loop(gateway: Any, interval_seconds: float) -> threading.Event:
+    """Resolve ``UNKNOWN`` executions periodically, in a daemon thread.
+
+    Runs only in the process that can reach the Tools service. Returns the
+    event that stops the loop. A failing pass is retried at the next tick:
+    until then the action stays ``UNKNOWN`` and its budget stays held.
+    """
+    stop = threading.Event()
+
+    def run() -> None:
+        while not stop.wait(interval_seconds):
+            try:
+                reconcile(gateway, include_executing=False)
+            except Exception:  # noqa: S112 (retried at the next tick; state stays held)
+                continue
+
+    threading.Thread(target=run, name="reconcile-loop", daemon=True).start()
+    return stop

@@ -48,6 +48,7 @@ from ullr_ai.gateway.signing import TIMESTAMP_FORMAT
 
 _AGENT_ID = re.compile(r"agent_[0-9]{1,8}")
 _ACTION_ID = re.compile(r"act_[0-9a-f]{32}")
+_SESSION_ID = re.compile(r"sess_[0-9a-f]{32}")
 
 # Action state machine (ARCHITECTURE.md section 8). There is no way back to
 # APPROVED: an approval is consumed by EXECUTING and never restored.
@@ -83,11 +84,12 @@ class Gateway:
         *,
         db_path: Path | str,
         policy: LoadedPolicy,
-        tools: ExecutorClient,
+        tools: ExecutorClient | None,
         admin_token: str,
         approver_token: str,
         approvers: dict[str, str],
         clock: Callable[[], datetime] = _utc_now,
+        recover_on_start: bool = True,
     ) -> None:
         self.db_path = str(db_path)
         self.policy = policy.policy
@@ -98,9 +100,16 @@ class Gateway:
         self.approvers = approvals.validate_registry(approvers)
         self._clock = clock
         init_db(self.db_path)
-        self.recover()
+        # Only the process that can reach the Tools service recovers and reconciles.
+        if recover_on_start:
+            self.recover()
 
     # --- helpers -------------------------------------------------------------
+
+    def _tools(self) -> ExecutorClient:
+        if self.tools is None:
+            raise RuntimeError("this Gateway process has no access to the Tools service")
+        return self.tools
 
     def _now(self) -> str:
         return self._clock().strftime(TIMESTAMP_FORMAT)
@@ -190,9 +199,39 @@ class Gateway:
             self._expire_overdue(conn)
         return reconcile(self, include_executing=True)
 
-    def reconcile_unknown(self) -> Reply:
-        """Resolve ``UNKNOWN`` executions while the Gateway is running."""
-        return 200, reconcile(self, include_executing=False)
+    def reconcile_unknown(self) -> dict[str, int]:
+        """Resolve ``UNKNOWN`` executions while the Gateway is running.
+
+        Never touches ``EXECUTING``: such an action may be a live request.
+        """
+        return reconcile(self, include_executing=False)
+
+    def state(self) -> Reply:
+        """Read-only view for the controller: actions, reservations, audit check."""
+        conn = storage.connect(self.db_path)
+        try:
+            actions = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT action_id, session_id, agent_id, tool, resource_id, status,"
+                    " execution_id, created_at FROM actions ORDER BY created_at"
+                )
+            ]
+            reservations = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT action_id, budget_key, amount_cents, state, created_at"
+                    " FROM budget_reservations ORDER BY id"
+                )
+            ]
+            report = audit.verify_chain(conn)
+        finally:
+            conn.close()
+        return 200, {
+            "actions": actions,
+            "reservations": reservations,
+            "audit": {"ok": report.ok, "events": report.events},
+        }
 
     # --- sessions (trusted party only) ---------------------------------------
 
@@ -216,12 +255,54 @@ class Gateway:
         conn = storage.connect(self.db_path)
         try:
             row = conn.execute(
-                "SELECT session_id, agent_id FROM sessions WHERE token_hash = ?",
+                "SELECT session_id, agent_id FROM sessions"
+                " WHERE token_hash = ? AND revoked_at IS NULL",
                 (_token_hash(token),),
             ).fetchone()
         finally:
             conn.close()
         return None if row is None else Session(row["session_id"], row["agent_id"])
+
+    def _active(self, conn: sqlite3.Connection, session: Session) -> bool:
+        """Whether the session is still valid, read inside the caller's transaction.
+
+        Authentication happened earlier in the request. A revocation committed
+        since then must win: this check runs in the same ``BEGIN IMMEDIATE``
+        transaction that would record or consume anything.
+        """
+        row = conn.execute(
+            "SELECT revoked_at FROM sessions WHERE session_id = ?", (session.session_id,)
+        ).fetchone()
+        return row is not None and row["revoked_at"] is None
+
+    def revoke_session(self, session_id: str) -> Reply:
+        """End a session: its token stops working and its open approvals are invalidated."""
+        if _SESSION_ID.fullmatch(session_id) is None:
+            return 404, {"error": "not_found"}
+        with storage.transaction(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT agent_id, revoked_at FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                return 404, {"error": "not_found"}
+            if row["revoked_at"] is None:
+                conn.execute(
+                    "UPDATE sessions SET revoked_at = ? WHERE session_id = ?",
+                    (self._now(), session_id),
+                )
+                self._audit(
+                    conn, "SESSION_REVOKED", session_id=session_id, agent_id=row["agent_id"]
+                )
+                open_approvals = conn.execute(
+                    "SELECT action_id FROM actions WHERE session_id = ?"
+                    " AND status IN ('PENDING_APPROVAL', 'APPROVED')",
+                    (session_id,),
+                ).fetchall()
+                for action in open_approvals:
+                    self._transition(
+                        conn, action["action_id"], "INVALIDATED", reason="session_revoked"
+                    )
+        return 200, {"session_id": session_id, "revoked": True}
 
     # --- propose -------------------------------------------------------------
 
@@ -240,6 +321,8 @@ class Gateway:
         if mutating:
             conn = storage.connect(self.db_path)
             try:
+                if not self._active(conn, session):
+                    return 401, {"error": "unauthorized"}
                 observed, preliminary = self._decide(conn, session, action)
             finally:
                 conn.close()
@@ -249,7 +332,7 @@ class Gateway:
                     resource_version = 0
                 else:
                     try:
-                        meta = self.tools.resource_meta(action.resource_id)
+                        meta = self._tools().resource_meta(action.resource_id)
                     except ToolsError:
                         return 502, {"error": "tools_unavailable"}
                     if meta is None:
@@ -260,6 +343,9 @@ class Gateway:
         execution_id: str | None = None
         expires_at: str | None = None
         with storage.transaction(self.db_path) as conn:
+            if not self._active(conn, session):
+                # Revoked since authentication: nothing is recorded or executed.
+                return 401, {"error": "unauthorized"}
             observed, decision = self._decide(conn, session, action)
             if mutating:
                 # The decision recorded here must be the one the lookup was based
@@ -424,6 +510,9 @@ class Gateway:
             return 400, {"error": "invalid_request"}
 
         with storage.transaction(self.db_path) as conn:
+            if not self._active(conn, session):
+                # Revoked since authentication: the approval is not consumed.
+                return 401, {"error": "unauthorized"}
             owned = conn.execute(
                 "SELECT action_hash FROM actions WHERE action_id = ? AND session_id = ?",
                 (action_id, session.session_id),
@@ -510,7 +599,7 @@ class Gateway:
         """
         mutating = TOOL_TIERS[action.tool] != "R0"
         try:
-            outcome = self.tools.execute(
+            outcome = self._tools().execute(
                 action.tool,
                 action.resource_id,
                 action.args,
@@ -613,8 +702,9 @@ def create_approver_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) ->
 
 
 def create_admin_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> FastAPI:
-    """Session issuance and reconciliation, for the benchmark controller or an
-    orchestrator only."""
+    """Session issuance and revocation, and a read-only view of the Gateway state,
+    for the benchmark controller or an orchestrator only. This application
+    needs no access to the Tools service."""
     app = new_app(max_body_bytes)
 
     def create(raw: bytes) -> Reply:
@@ -643,10 +733,16 @@ def create_admin_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> Fa
         raw = await request.body()
         return await _reply(create, raw)
 
-    @app.post("/admin/reconcile")
-    async def reconcile_unknown(request: Request) -> JSONResponse:
+    @app.post("/admin/sessions/{session_id}/revoke")
+    async def revoke_session(session_id: str, request: Request) -> JSONResponse:
         if not token_matches(bearer_token(request), gateway.admin_token):
             return error(401, "unauthorized")
-        return await _reply(gateway.reconcile_unknown)
+        return await _reply(gateway.revoke_session, session_id)
+
+    @app.get("/admin/state")
+    async def state(request: Request) -> JSONResponse:
+        if not token_matches(bearer_token(request), gateway.admin_token):
+            return error(401, "unauthorized")
+        return await _reply(gateway.state)
 
     return app

@@ -97,7 +97,13 @@ def make_env(tmp_path, tools):
     """
 
     def build(
-        *, tools_http=None, policy_text=None, max_body_bytes=None, clock=None, approvers=None
+        *,
+        tools_http=None,
+        policy_text=None,
+        max_body_bytes=None,
+        clock=None,
+        approvers=None,
+        without_tools=False,
     ):
         policy_path = DEFAULT_POLICY
         if policy_text is not None:
@@ -106,7 +112,10 @@ def make_env(tmp_path, tools):
         gateway = Gateway(
             db_path=tmp_path / "gateway.db",
             policy=load_policy(policy_path),
-            tools=ExecutorClient(tools_http or tools.executor, EXECUTOR_TOKEN),
+            tools=None
+            if without_tools
+            else ExecutorClient(tools_http or tools.executor, EXECUTOR_TOKEN),
+            recover_on_start=not without_tools,
             admin_token=GATEWAY_ADMIN_TOKEN,
             approver_token=APPROVER_TOKEN,
             approvers=APPROVERS if approvers is None else approvers,

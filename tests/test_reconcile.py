@@ -1,5 +1,7 @@
 """UNKNOWN outcomes, crash after consumption, reconciliation (T19, G4, G7)."""
 
+import time
+
 import httpx
 import pytest
 
@@ -16,6 +18,7 @@ from conftest import (
     status_of,
 )
 from test_gateway_api import forwarding_transport
+from ullr_ai.gateway.reconcile import start_loop
 
 REFUND = {"amount": "400.00", "currency": "EUR"}
 ADMIN = bearer(GATEWAY_ADMIN_TOKEN)
@@ -58,9 +61,8 @@ def refunds(tools):
 
 
 def reconcile(env):
-    response = env.admin.post("/admin/reconcile", headers=ADMIN)
-    assert response.status_code == 200
-    return response.json()
+    """One pass of the reconciliation the Gateway API process runs in its loop."""
+    return env.gateway.reconcile_unknown()
 
 
 # --- Timeout after the action was executed -----------------------------------
@@ -266,15 +268,45 @@ def test_unexpected_resolution_reply_releases_nothing(make_env, tools, reply):
     assert reservation_states(env, action_id) == {"HELD"}
 
 
-# --- Access ------------------------------------------------------------------
+# --- Where reconciliation runs -----------------------------------------------
 
 
-@pytest.mark.parametrize("headers", [{}, bearer("wrong"), bearer(EXECUTOR_TOKEN)])
-def test_reconcile_requires_the_admin_token(env, headers):
-    assert env.admin.post("/admin/reconcile", headers=headers).status_code == 401
-
-
-def test_agent_cannot_trigger_reconciliation(env):
+def test_no_application_exposes_a_reconciliation_route(env):
+    """Reconciliation is internal to the Gateway API process: nobody can trigger it."""
     _, agent = new_session(env)
-    assert env.admin.post("/admin/reconcile", headers=agent).status_code == 401
-    assert env.agent.post("/admin/reconcile", headers=agent).status_code == 404
+    for client in (env.agent, env.admin, env.approver):
+        for headers in (agent, ADMIN, {}):
+            for path in ("/admin/reconcile", "/v1/reconcile"):
+                assert client.post(path, headers=headers).status_code == 404
+
+
+def test_background_loop_resolves_unknown_executions(make_env, tools):
+    env = faulty_env(make_env, tools, "timeout_after")
+    _, agent = new_session(env)
+    action_id = approved(env, agent, "issue_refund", "acct_1", REFUND)
+    execute(env, agent, action_id, "issue_refund", "acct_1", REFUND)
+    assert status_of(env, action_id) == "UNKNOWN"
+
+    stop = start_loop(env.gateway, 0.05)
+    try:
+        deadline = time.monotonic() + 10
+        while status_of(env, action_id) == "UNKNOWN" and time.monotonic() < deadline:
+            time.sleep(0.05)
+    finally:
+        stop.set()
+    assert status_of(env, action_id) == "COMMITTED"
+    assert reservation_states(env, action_id) == {"COMMITTED"}
+    assert len(refunds(tools)) == 1
+
+
+def test_process_without_tools_access_does_not_recover(make_env, tools):
+    """The admin and approver processes start without touching open executions."""
+    env = faulty_env(make_env, tools, "crash_after")
+    _, agent = new_session(env)
+    action_id = approved(env, agent, "issue_refund", "acct_1", REFUND)
+    execute(env, agent, action_id, "issue_refund", "acct_1", REFUND)
+    assert status_of(env, action_id) == "EXECUTING"
+
+    other = make_env(without_tools=True)
+    assert status_of(other, action_id) == "EXECUTING"
+    assert other.admin.get("/admin/state", headers=ADMIN).status_code == 200

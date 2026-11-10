@@ -225,9 +225,9 @@ def session(db):
         "DELETE FROM session_sources",
         "UPDATE session_sources SET source_id = 'doc_1'",
         "UPDATE session_sources SET session_id = 'sess_b'",
-        "INSERT OR REPLACE INTO sessions VALUES ('sess_a', 'agent_1', 'hash_a', 0, 't')",
-        "INSERT OR REPLACE INTO sessions VALUES ('sess_a', 'agent_1', 'hash_z', 0, 't')",
-        "INSERT OR REPLACE INTO sessions VALUES ('sess_z', 'agent_1', 'hash_a', 0, 't')",
+        "INSERT OR REPLACE INTO sessions VALUES ('sess_a', 'agent_1', 'hash_a', 0, 't', NULL)",
+        "INSERT OR REPLACE INTO sessions VALUES ('sess_a', 'agent_1', 'hash_z', 0, 't', NULL)",
+        "INSERT OR REPLACE INTO sessions VALUES ('sess_z', 'agent_1', 'hash_a', 0, 't', NULL)",
     ],
 )
 def test_session_and_provenance_history_cannot_be_rewritten(session, statement):
