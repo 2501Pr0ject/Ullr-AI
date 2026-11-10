@@ -673,3 +673,97 @@ def test_successful_responses_do_not_contain_credentials(env):
     for response in responses:
         for secret in (EXECUTOR_TOKEN, GATEWAY_ADMIN_TOKEN, agent_token):
             assert secret not in response.text
+
+
+# --- A DENY never contacts the Tools service ---------------------------------
+
+
+def deny_policy():
+    """Default policy with taint denial on update_document and without send_email."""
+    text = DEFAULT_POLICY.read_text(encoding="utf-8")
+    for old, new in [
+        (
+            "  update_document:\n    tier: R1\n",
+            "  update_document:\n    tier: R1\n    on_tainted_session: deny\n",
+        ),
+        ("  send_email:\n    tier: R2\n", ""),
+        ("  get_balance:\n    tier: R0\n", ""),
+    ]:
+        assert old in text
+        text = text.replace(old, new)
+    return text
+
+
+@pytest.mark.parametrize(
+    ("tool", "resource_id", "args", "reason"),
+    [
+        ("issue_refund", "acct_1", {"amount": "900.00", "currency": "EUR"}, "amount_over_limit"),
+        ("issue_refund", "acct_1", {"amount": "100.00", "currency": "USD"}, "currency_not_allowed"),
+        # The resource does not exist: a lookup would have revealed it.
+        ("issue_refund", "acct_99", {"amount": "900.00", "currency": "EUR"}, "amount_over_limit"),
+        ("update_document", "doc_1", {"content": "x"}, "tainted_session"),
+        ("update_document", "doc_99", {"content": "x"}, "tainted_session"),
+        ("send_email", None, EMAIL, "tool_not_in_policy"),
+        ("get_balance", "acct_1", {}, "tool_not_in_policy"),
+    ],
+)
+def test_deny_makes_no_call_of_any_kind_to_the_tools_service(
+    make_env, tools, tool, resource_id, args, reason
+):
+    client, calls = forwarding_transport(tools)
+    env = make_env(tools_http=client, policy_text=deny_policy())
+    _, headers = new_session(env)
+    assert propose(env, headers, "read_document", "doc_2").status_code == 200  # taint
+    calls.clear()
+
+    response = propose(env, headers, tool, resource_id, args)
+    assert response.status_code == 403
+    assert (response.json()["decision"], response.json()["reason"]) == ("DENY", reason)
+    assert calls == []
+    assert statuses(env)[-1] == "DENIED"
+    assert event_types(env, response.json()["action_id"]) == ["PROPOSED", "DENIED"]
+
+
+def test_lookup_happens_only_after_a_non_deny_decision(make_env, tools):
+    client, calls = forwarding_transport(tools)
+    env = make_env(tools_http=client)
+    _, headers = new_session(env)
+    assert propose(env, headers, "delete_document", "doc_1").status_code == 202
+    assert calls == [("GET", "/v1/resources/doc_1")]
+    calls.clear()
+    assert propose(env, headers, "update_document", "doc_1", {"content": "x"}).status_code == 200
+    assert calls == [("GET", "/v1/resources/doc_1"), ("POST", "/v1/execute")]
+    calls.clear()
+    assert propose(env, headers, "read_document", "doc_1").status_code == 200
+    assert calls == [("POST", "/v1/execute")]
+
+
+def test_provenance_change_during_the_lookup_records_nothing(make_env, tools):
+    """A concurrent read taints the session between the decision and its recording."""
+    holder = {}
+
+    def taint_concurrently(request):
+        if request.url.path.startswith("/v1/resources/"):
+            with storage.transaction(holder["env"].gateway.db_path) as conn:
+                conn.execute(
+                    "INSERT INTO session_sources VALUES (?, 'doc_2')", (holder["session"],)
+                )
+                conn.execute("UPDATE sessions SET provenance_version = provenance_version + 1")
+
+    client, calls = forwarding_transport(tools, before=taint_concurrently)
+    env = holder["env"] = make_env(tools_http=client, policy_text=deny_policy())
+    holder["session"], headers = new_session(env)
+
+    response = propose(env, headers, "update_document", "doc_1", {"content": "x"})
+    assert response.status_code == 409
+    assert response.json() == {"error": "session_changed"}
+    assert rows(env, "SELECT * FROM actions") == []
+    assert ("POST", "/v1/execute") not in calls
+    assert tools.state.executions() == []
+
+    # Proposed again, the action meets the decision that matches the session now.
+    calls.clear()
+    again = propose(env, headers, "update_document", "doc_1", {"content": "x"})
+    assert again.status_code == 403
+    assert again.json()["reason"] == "tainted_session"
+    assert calls == []

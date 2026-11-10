@@ -186,7 +186,7 @@ A session is created by a trusted party (the benchmark controller here, an orche
 
 1. **Propose** `POST /v1/actions` with `{tool, resource_id, args, reason}`. `agent_id` and `session_id` come from the token, never from the payload.
 2. **Validate and canonicalize** (§4), then compute `action_hash`.
-3. **Decide** from the policy (§5): `DENY`, `ALLOW` (R0/R1 within constraints), or `REQUIRE_APPROVAL`.
+3. **Decide** from the policy (§5): `DENY`, `ALLOW` (R0/R1 within constraints), or `REQUIRE_APPROVAL`. The order is fixed: validate, decide, and only then look up the resource version, for `ALLOW` and `REQUIRE_APPROVAL` only. A `DENY` never contacts the Tools service. If the session's provenance changes between the decision and its recording, nothing is recorded and the agent must propose again.
 4. **`ALLOW`**: the Gateway executes within the same request, through the internal execution path (step 6), and returns the result in one round trip. Decision and intent are recorded in one transaction, so a provenance change between two calls cannot invalidate a read.
 5. **`REQUIRE_APPROVAL`**: the action is recorded as `PENDING_APPROVAL`. Once a signed decision has approved it, the agent calls `POST /v1/actions/{id}/execute` with the arguments sent **again**. In one `BEGIN IMMEDIATE` transaction, the Gateway:
    - verifies status, expiry, signature, `action_hash`, `policy_hash`, `canon_version` and `provenance_version`;

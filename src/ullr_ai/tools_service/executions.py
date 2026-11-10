@@ -124,13 +124,12 @@ def _apply(conn: sqlite3.Connection, action: Action, if_match: int) -> dict[str,
             "SELECT version, balance_cents, currency FROM accounts WHERE id = ?", (resource_id,)
         ).fetchone()
         _check_version(row, if_match)
+        # A refund credits the customer account; there is no balance to exhaust.
         amount = amount_to_cents(args["amount"])
         if row["currency"] != args["currency"]:
             raise Rejected(422, "currency_mismatch")
-        if row["balance_cents"] < amount:
-            raise Rejected(422, "insufficient_funds")
         conn.execute(
-            "UPDATE accounts SET balance_cents = balance_cents - ?, version = version + 1"
+            "UPDATE accounts SET balance_cents = balance_cents + ?, version = version + 1"
             " WHERE id = ?",
             (amount, resource_id),
         )
@@ -141,7 +140,7 @@ def _apply(conn: sqlite3.Connection, action: Action, if_match: int) -> dict[str,
         return {
             "id": resource_id,
             "version": if_match + 1,
-            "balance": cents_to_amount(row["balance_cents"] - amount),
+            "balance": cents_to_amount(row["balance_cents"] + amount),
         }
 
     if tool == "update_prod_config":

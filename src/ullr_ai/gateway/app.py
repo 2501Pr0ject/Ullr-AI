@@ -146,26 +146,47 @@ class Gateway:
         except (CanonError, SchemaError):
             return 400, {"error": "invalid_request"}
 
+        # Order: validate, decide, and only then look the resource version up.
+        # A DENY never contacts the Tools service. Reads need no version, so
+        # they are decided and recorded in the single transaction below.
         mutating = TOOL_TIERS[action.tool] != "R0"
         resource_version: int | None = None
-        if mutating and action.tool in self.policy.tools:
-            # The version the action is bound to, read before any decision is stored.
-            if action.resource_id is None:
-                resource_version = 0
-            else:
-                try:
-                    meta = self.tools.resource_meta(action.resource_id)
-                except ToolsError:
-                    return 502, {"error": "tools_unavailable"}
-                if meta is None:
-                    return 404, {"error": "resource_not_found"}
-                resource_version = meta["version"]
+        decided_at: int | None = None  # provenance version of the preliminary decision
+        if mutating:
+            conn = storage.connect(self.db_path)
+            try:
+                observed = provenance.snapshot(conn, session.session_id)
+            finally:
+                conn.close()
+            if decide(self.policy, action, tainted=observed.tainted).outcome != "DENY":
+                decided_at = observed.version
+                if action.resource_id is None:
+                    resource_version = 0
+                else:
+                    try:
+                        meta = self.tools.resource_meta(action.resource_id)
+                    except ToolsError:
+                        return 502, {"error": "tools_unavailable"}
+                    if meta is None:
+                        return 404, {"error": "resource_not_found"}
+                    resource_version = meta["version"]
 
         action_id = "act_" + secrets.token_hex(16)
         execution_id: str | None = None
         with storage.transaction(self.db_path) as conn:
             observed = provenance.snapshot(conn, session.session_id)
             decision = decide(self.policy, action, tainted=observed.tainted)
+            if mutating:
+                # The decision recorded here must be the one the lookup was based
+                # on. If the session's provenance moved in between (a concurrent
+                # read), nothing is recorded and the agent must propose again.
+                consistent = (
+                    decision.outcome == "DENY"
+                    if decided_at is None
+                    else observed.version == decided_at
+                )
+                if not consistent:
+                    return 409, {"error": "session_changed"}
             conn.execute(
                 "INSERT INTO actions (action_id, session_id, agent_id, tool, resource_id,"
                 " resource_version, action_hash, policy_hash, canon_version,"

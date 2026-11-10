@@ -101,10 +101,10 @@ def test_same_key_twice_executes_once_and_replays_the_result(tools):
     second = execute(tools, REFUND_100)
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
-    assert first.json()["result"]["balance"] == "1900.00"
+    assert first.json()["result"]["balance"] == "2100.00"
     snapshot = tools.state.snapshot()
     assert len(snapshot["refunds"]) == 1
-    assert snapshot["accounts"][0]["balance_cents"] == 190_000
+    assert snapshot["accounts"][0]["balance_cents"] == 210_000
     assert len(tools.state.executions()) == 1
 
 
@@ -137,7 +137,7 @@ def test_concurrent_calls_with_one_key_execute_once(tools):
     assert len({response.text for response in responses}) == 1
     snapshot = tools.state.snapshot()
     assert len(snapshot["refunds"]) == 1
-    assert snapshot["accounts"][0]["balance_cents"] == 190_000
+    assert snapshot["accounts"][0]["balance_cents"] == 210_000
 
 
 def test_concurrent_calls_with_distinct_keys_respect_the_precondition(tools):
@@ -218,12 +218,6 @@ def test_tools_without_a_resource_require_version_zero(tools):
         ),
         ({**SEND, "args": {**SEND["args"], "to": "contact_99"}}, "0", 422, "unknown_contact"),
         (
-            {**REFUND_100, "resource_id": "acct_2", "args": {"amount": "50.01", "currency": "EUR"}},
-            "1",
-            422,
-            "insufficient_funds",
-        ),
-        (
             {**REFUND_100, "args": {"amount": "100.00", "currency": "USD"}},
             "1",
             422,
@@ -240,9 +234,19 @@ def test_explicit_failures_have_no_effect(tools, body, if_match, status, code):
     assert [e["status"] for e in tools.state.executions()] == ["FAILED"]
 
 
-def test_refund_of_the_exact_balance_is_executed(tools):
-    body = {**REFUND_100, "resource_id": "acct_2", "args": {"amount": "50.00", "currency": "EUR"}}
-    assert execute(tools, body).json()["result"]["balance"] == "0.00"
+def test_refund_credits_the_account_whatever_its_balance(tools):
+    body = {**REFUND_100, "resource_id": "acct_2", "args": {"amount": "50.01", "currency": "EUR"}}
+    assert execute(tools, body).json()["result"]["balance"] == "100.01"
+    assert tools.state.snapshot()["refunds"] == [
+        {"id": 1, "account_id": "acct_2", "amount_cents": 5001, "currency": "EUR"}
+    ]
+
+
+def test_account_seeded_without_a_balance_starts_at_zero(tools):
+    seed = {"seed": {"accounts": [{"id": "acct_5", "currency": "EUR"}]}}
+    tools.admin.post("/admin/reset", json=seed, headers=bearer(TOOLS_ADMIN_TOKEN))
+    body = {**REFUND_100, "resource_id": "acct_5"}
+    assert execute(tools, body).json()["result"]["balance"] == "100.00"
 
 
 @pytest.mark.parametrize(

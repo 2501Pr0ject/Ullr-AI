@@ -123,7 +123,7 @@ class SeedContact(StrictModel):
 
 class SeedAccount(StrictModel):
     id: Annotated[str, full_match(ACCOUNT_ID)]
-    balance: Amount
+    balance: Amount | None = None  # amount already credited; none by default
     currency: Currency
 
 
@@ -182,7 +182,11 @@ class ToolsState:
                 conn.execute(
                     "INSERT INTO accounts (id, version, balance_cents, currency)"
                     " VALUES (?, 1, ?, ?)",
-                    (account.id, amount_to_cents(account.balance), account.currency),
+                    (
+                        account.id,
+                        0 if account.balance is None else amount_to_cents(account.balance),
+                        account.currency,
+                    ),
                 )
             for entry in seed.config:
                 conn.execute(

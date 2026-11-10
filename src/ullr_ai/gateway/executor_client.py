@@ -26,7 +26,6 @@ CONFIRMED_NOT_EXECUTED = frozenset(
         "precondition_failed",
         "not_found",
         "unknown_contact",
-        "insufficient_funds",
         "currency_mismatch",
     }
 )
