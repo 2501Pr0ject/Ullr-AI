@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS faults (
     calls_seen INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'ARMED' CHECK (state IN ('ARMED', 'HELD', 'RELEASED')),
     release_action TEXT CHECK (release_action IN ('continue', 'drop')),
-    idempotency_key TEXT
+    idempotency_key TEXT,
+    -- What the held request actually did once the wait ended.
+    outcome TEXT CHECK (outcome IN ('continued', 'dropped', 'timed_out')),
+    outcome_status INTEGER,
+    outcome_error TEXT
 );
 """
 

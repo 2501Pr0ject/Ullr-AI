@@ -40,6 +40,12 @@ def wait_held(tools, fault_id, timeout=10):
     raise AssertionError("the request was never held")
 
 
+def outcome(tools, fault_id):
+    """What the held request did after its wait, as recorded by the Tools service."""
+    row = fault_state(tools, fault_id)
+    return row["outcome"], row["outcome_status"], row["outcome_error"]
+
+
 def release(tools, fault_id, action):
     return tools.admin.post(
         f"/admin/faults/{fault_id}/release", json={"action": action}, headers=ADMIN
@@ -86,6 +92,7 @@ def test_request_held_before_commit_has_no_effect_until_released(tools):
     assert response.status_code == 200
     assert len(refunds(tools)) == 1
     assert [e["status"] for e in tools.state.executions()] == ["EXECUTED"]
+    assert outcome(tools, fault_id) == ("continued", 200, None)
 
 
 def test_request_dropped_before_commit_executes_and_records_nothing(tools):
@@ -99,6 +106,7 @@ def test_request_dropped_before_commit_executes_and_records_nothing(tools):
     assert response.json() == {"executed": False, "error": "fault_injected"}
     assert refunds(tools) == []
     assert tools.state.executions() == []
+    assert outcome(tools, fault_id) == ("dropped", None, None)
 
 
 # --- Hold after commit -------------------------------------------------------
@@ -116,6 +124,7 @@ def test_request_held_after_commit_has_already_taken_effect(tools):
     release(tools, fault_id, "drop")  # the response is lost
     assert call.finish().status_code == 504
     assert len(refunds(tools)) == 1
+    assert outcome(tools, fault_id) == ("dropped", 200, None)
     # The caller can still learn the truth from the idempotency key.
     resolved = tools.executor.post(
         "/v1/executions/key-held-0001/resolve",
@@ -148,6 +157,11 @@ def test_key_burned_while_the_request_is_held_is_enforced_by_the_tools_service(t
     assert response.json() == {"executed": False, "error": "abandoned"}
     assert refunds(tools) == []
     assert [e["status"] for e in tools.state.executions()] == ["FAILED"]
+    # The refusal is recorded by the Tools service itself, even if nobody is
+    # left to receive the response: the request resumed, reached the key
+    # lookup, and was refused there.
+    assert outcome(tools, fault_id) == ("continued", 409, "abandoned")
+    assert tools.state.executions()[0]["request_hash"] == "abandoned"
 
 
 def test_other_requests_proceed_while_one_is_held(tools):
@@ -219,6 +233,8 @@ def test_request_held_too_long_is_dropped(tools):
     assert response.status_code == 504
     assert refunds(tools) == []
     assert fault_state(tools, fault_id)["state"] == "HELD"
+    # A time-out is recorded as such: it must never be mistaken for a refusal.
+    assert outcome(tools, fault_id) == ("timed_out", None, None)
 
 
 def test_reset_clears_faults_and_drops_a_held_request(tools):

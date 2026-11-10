@@ -134,14 +134,23 @@ def _execute(
     # The wait is outside any transaction: the key lookup below happens after
     # the release, so a key burned in the meantime is honoured.
     tripped = faults.trip(state.db_path, action, idempotency_key)
-    if tripped is not None and tripped.hold == "before_commit":
-        if faults.wait(state.db_path, tripped.fault_id, max_wait=fault_max_wait) == "drop":
+    if tripped is None:
+        return execute_mutation(state, action, idempotency_key, int(if_match))
+
+    db_path, fault_id = state.db_path, tripped.fault_id
+    if tripped.hold == "before_commit":
+        waited = faults.wait(db_path, fault_id, max_wait=fault_max_wait)
+        if waited != "continued":
+            faults.record_outcome(db_path, fault_id, waited, None, None)
             return _FAULT_DROPPED
+        status, body = execute_mutation(state, action, idempotency_key, int(if_match))
+        faults.record_outcome(db_path, fault_id, waited, status, body.get("error"))
+        return status, body
+
     status, body = execute_mutation(state, action, idempotency_key, int(if_match))
-    if tripped is not None and tripped.hold == "after_commit":
-        if faults.wait(state.db_path, tripped.fault_id, max_wait=fault_max_wait) == "drop":
-            return _FAULT_DROPPED
-    return status, body
+    waited = faults.wait(db_path, fault_id, max_wait=fault_max_wait)
+    faults.record_outcome(db_path, fault_id, waited, status, body.get("error"))
+    return (status, body) if waited == "continued" else _FAULT_DROPPED
 
 
 def create_admin_app(

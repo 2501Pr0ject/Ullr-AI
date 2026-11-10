@@ -80,10 +80,11 @@ def trip(db_path: str, action: Action, idempotency_key: str) -> Tripped | None:
 
 
 def wait(db_path: str, fault_id: int, *, max_wait: float, poll: float = 0.05) -> str:
-    """Block until the fault is released. Returns ``continue`` or ``drop``.
+    """Block until the fault is released. Returns ``continued``, ``dropped`` or ``timed_out``.
 
     No transaction is open while waiting. A fault that disappears (state reset)
-    or is not released within ``max_wait`` seconds is dropped.
+    is dropped; one that is not released within ``max_wait`` seconds times out,
+    which also drops the request.
     """
     deadline = time.monotonic() + max_wait
     conn = storage.connect(db_path)
@@ -93,10 +94,25 @@ def wait(db_path: str, fault_id: int, *, max_wait: float, poll: float = 0.05) ->
                 "SELECT state, release_action FROM faults WHERE id = ?", (fault_id,)
             ).fetchone()
             if row is None:
-                return "drop"
+                return "dropped"
             if row["state"] == "RELEASED":
-                return row["release_action"]
+                return "continued" if row["release_action"] == "continue" else "dropped"
             time.sleep(poll)
     finally:
         conn.close()
-    return "drop"
+    return "timed_out"
+
+
+def record_outcome(
+    db_path: str, fault_id: int, outcome: str, status: int | None, error: str | None
+) -> None:
+    """Record what the held request did after its wait: evidence for the controller.
+
+    Without this, a request refused after its key was burned would leave no
+    trace when its caller is gone.
+    """
+    with storage.transaction(db_path) as conn:
+        conn.execute(
+            "UPDATE faults SET outcome = ?, outcome_status = ?, outcome_error = ? WHERE id = ?",
+            (outcome, status, error, fault_id),
+        )
