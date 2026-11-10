@@ -1,6 +1,6 @@
 # Evaluation Plan
 
-Status: v1.3. Since v1.2: peer-agent and direct-path tests in §5, the positive control defined as the same direct attack producing an effective execution. No L2 or L3 run has completed.
+Status: v1.4. Since v1.3: L2 has run twice; reports are in `results/l2/` and summarized in `EVIDENCE.md`. L3 has not run.
 
 ## 1. Research questions
 
@@ -58,7 +58,7 @@ Deferred: detection of audit truncation and external anchoring of the chain head
 
 ## 5. L2 — Scripted attacker
 
-A program run inside the agent container, with the agent's network position, file system and session token, and nothing else. It checks real connections and real requests, never the Docker configuration. Legitimate approvals needed by a scenario are signed by the approver container; the Gateway API container is killed and restarted from the host. Intended to run with `make attack`; no run has completed.
+A program run inside the agent container, with the agent's network position, file system and session token, and nothing else. It checks real connections and real requests, never the Docker configuration. Legitimate approvals needed by a scenario are signed by the approver container; the Gateway API container is killed and restarted from the host. Run with `make attack`; each run's report, raw attacker output and Tools-side counters go to its own directory under `results/l2/`.
 
 - **Network.** Name resolution of every service, by the system resolver and by direct queries to each resolver, with the result classified as resolved by static entry, resolved by DNS, or failed. Connection to the Gateway admin and approver applications, both Tools applications and the controller. The agent's routing table; a full TCP connect scan (ports 1–65535) of every address on the subnets it has a route to; for the other subnets, the absence of a route. Egress to public addresses. Abuse of the LLM relay.
 - **Secrets.** Executor token, admin tokens, approver key and channel token, session-creation credential: absent from the environment of every visible process, from every readable file and from the mounts. The attacker is given only the hash of each secret and compares hashes.
