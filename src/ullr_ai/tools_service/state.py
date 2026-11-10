@@ -24,6 +24,20 @@ from ullr_ai.gateway.schemas import (
     full_match,
 )
 
+FAULTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS faults (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool TEXT NOT NULL,
+    resource_id TEXT,
+    on_call INTEGER NOT NULL CHECK (on_call >= 1),
+    hold TEXT NOT NULL CHECK (hold IN ('before_commit', 'after_commit')),
+    calls_seen INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'ARMED' CHECK (state IN ('ARMED', 'HELD', 'RELEASED')),
+    release_action TEXT CHECK (release_action IN ('continue', 'drop')),
+    idempotency_key TEXT
+);
+"""
+
 TrustLabel = Literal["internal", "external"]
 
 SCHEMA = """
@@ -149,6 +163,7 @@ class ToolsState:
         conn = storage.connect(self.db_path)
         try:
             conn.executescript(SCHEMA)
+            conn.executescript(FAULTS_SCHEMA)
         finally:
             conn.close()
 
@@ -158,7 +173,7 @@ class ToolsState:
     def reset(self, seed: Seed) -> None:
         """Erase everything, execution table included, and load the seed."""
         with self.transaction() as conn:
-            for table in (*STATE_TABLES, "executions"):
+            for table in (*STATE_TABLES, "executions", "faults"):
                 conn.execute(f"DELETE FROM {table}")  # noqa: S608 (fixed table names)
             conn.execute("DELETE FROM sqlite_sequence")
             for doc in seed.documents:

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from ullr_ai.asgi import bearer_token, error, new_app, token_matches
 from ullr_ai.gateway.canon import MAX_BYTES, CanonError, parse_json_strict
 from ullr_ai.gateway.schemas import SchemaError, parse_execution
+from ullr_ai.tools_service import faults
 from ullr_ai.tools_service.executions import MUTATING_TOOLS, execute_mutation, resolve_execution
 from ullr_ai.tools_service.state import Seed, ToolsState
 
@@ -30,7 +31,11 @@ def _not_executed(status: int, code: str) -> JSONResponse:
 
 
 def create_executor_app(
-    state: ToolsState, executor_token: str, *, max_body_bytes: int = MAX_BYTES
+    state: ToolsState,
+    executor_token: str,
+    *,
+    max_body_bytes: int = MAX_BYTES,
+    fault_max_wait: float = 120.0,
 ) -> FastAPI:
     app = new_app(max_body_bytes)
 
@@ -48,6 +53,7 @@ def create_executor_app(
             raw,
             request.headers.get("idempotency-key"),
             request.headers.get("if-match"),
+            fault_max_wait,
         )
         return JSONResponse(body, status_code=status)
 
@@ -99,8 +105,15 @@ def create_executor_app(
     return app
 
 
+_FAULT_DROPPED = (504, {"executed": False, "error": "fault_injected"})
+
+
 def _execute(
-    state: ToolsState, raw: bytes, idempotency_key: str | None, if_match: str | None
+    state: ToolsState,
+    raw: bytes,
+    idempotency_key: str | None,
+    if_match: str | None,
+    fault_max_wait: float,
 ) -> tuple[int, dict[str, Any]]:
     try:
         action = parse_execution(parse_json_strict(raw))
@@ -117,7 +130,18 @@ def _execute(
         return 400, {"executed": False, "error": "idempotency_key_required"}
     if if_match is None or _IF_MATCH.fullmatch(if_match) is None:
         return 428, {"executed": False, "error": "precondition_required"}
-    return execute_mutation(state, action, idempotency_key, int(if_match))
+    # A controlled fault may hold this request, before the effect or after it.
+    # The wait is outside any transaction: the key lookup below happens after
+    # the release, so a key burned in the meantime is honoured.
+    tripped = faults.trip(state.db_path, action, idempotency_key)
+    if tripped is not None and tripped.hold == "before_commit":
+        if faults.wait(state.db_path, tripped.fault_id, max_wait=fault_max_wait) == "drop":
+            return _FAULT_DROPPED
+    status, body = execute_mutation(state, action, idempotency_key, int(if_match))
+    if tripped is not None and tripped.hold == "after_commit":
+        if faults.wait(state.db_path, tripped.fault_id, max_wait=fault_max_wait) == "drop":
+            return _FAULT_DROPPED
+    return status, body
 
 
 def create_admin_app(
@@ -150,6 +174,59 @@ def create_admin_app(
         if not authorized(request):
             return error(401, "unauthorized")
         return JSONResponse(state.snapshot())
+
+    @app.post("/admin/faults")
+    async def add_fault(request: Request) -> JSONResponse:
+        if not authorized(request):
+            return error(401, "unauthorized")
+        try:
+            body = parse_json_strict(await request.body())
+        except CanonError:
+            return error(400, "invalid_request")
+        if (
+            type(body) is not dict
+            or set(body) != {"tool", "resource_id", "on_call", "hold"}
+            or body["tool"] not in MUTATING_TOOLS
+            or not (body["resource_id"] is None or type(body["resource_id"]) is str)
+            or type(body["on_call"]) is not int
+            or not 1 <= body["on_call"] <= 1000
+            or body["hold"] not in faults.HOLDS
+        ):
+            return error(400, "invalid_request")
+        fault_id = await run_in_threadpool(
+            faults.add,
+            state.db_path,
+            body["tool"],
+            body["resource_id"],
+            body["on_call"],
+            body["hold"],
+        )
+        return JSONResponse({"id": fault_id}, status_code=201)
+
+    @app.get("/admin/faults")
+    def list_faults(request: Request) -> JSONResponse:
+        if not authorized(request):
+            return error(401, "unauthorized")
+        return JSONResponse({"faults": faults.listing(state.db_path)})
+
+    @app.post("/admin/faults/{fault_id}/release")
+    async def release_fault(fault_id: int, request: Request) -> JSONResponse:
+        if not authorized(request):
+            return error(401, "unauthorized")
+        try:
+            body = parse_json_strict(await request.body())
+        except CanonError:
+            return error(400, "invalid_request")
+        if (
+            type(body) is not dict
+            or set(body) != {"action"}
+            or body["action"] not in faults.RELEASE_ACTIONS
+        ):
+            return error(400, "invalid_request")
+        released = await run_in_threadpool(faults.release, state.db_path, fault_id, body["action"])
+        if not released:
+            return error(409, "not_held")
+        return JSONResponse({"id": fault_id, "state": "RELEASED"})
 
     @app.get("/admin/executions")
     def executions(request: Request) -> JSONResponse:
