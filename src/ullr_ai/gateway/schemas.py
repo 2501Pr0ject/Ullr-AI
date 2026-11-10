@@ -44,6 +44,16 @@ def _positive(value: str) -> str:
     return value
 
 
+def amount_to_cents(amount: str) -> int:
+    """Exact conversion of a validated amount string ("123.45") to integer cents."""
+    units, cents = amount.split(".")
+    return int(units) * 100 + int(cents)
+
+
+def cents_to_amount(cents: int) -> str:
+    return f"{cents // 100}.{cents % 100:02d}"
+
+
 DOC_ID = r"doc_[0-9]{1,8}"
 ACCOUNT_ID = r"acct_[0-9]{1,8}"
 CONFIG_ID = r"cfg_[0-9]{1,8}"
