@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from ullr_ai.asgi import bearer_token, error, new_app, token_matches
 from ullr_ai.gateway.canon import MAX_BYTES, CanonError, parse_json_strict
-from ullr_ai.gateway.schemas import SchemaError, validate_action
+from ullr_ai.gateway.schemas import SchemaError, parse_execution
 from ullr_ai.tools_service.executions import MUTATING_TOOLS, execute_mutation
 from ullr_ai.tools_service.state import Seed, ToolsState
 
@@ -80,10 +80,7 @@ def _execute(
     state: ToolsState, raw: bytes, idempotency_key: str | None, if_match: str | None
 ) -> tuple[int, dict[str, Any]]:
     try:
-        request = parse_json_strict(raw)
-        if type(request) is not dict or set(request) != {"tool", "resource_id", "args"}:
-            raise SchemaError("invalid request")
-        action = validate_action(request["tool"], request["resource_id"], request["args"])
+        action = parse_execution(parse_json_strict(raw))
     except (CanonError, SchemaError):
         return 422, {"executed": False, "error": "invalid_request"}
 

@@ -12,7 +12,15 @@ from typing import Annotated, Any, Literal
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
-from ullr_ai.gateway.schemas import TOOLS, Amount, Currency, StrictModel, full_match
+from ullr_ai.gateway.schemas import (
+    TOOLS,
+    Action,
+    Amount,
+    Currency,
+    StrictModel,
+    amount_to_cents,
+    full_match,
+)
 
 Tier = Literal["R0", "R1", "R2"]
 
@@ -129,3 +137,36 @@ def tier_of(tool: Any) -> Tier:
     if type(tool) is not str or tool not in TOOL_TIERS:
         raise PolicyError("unknown tool")
     return TOOL_TIERS[tool]
+
+
+Outcome = Literal["DENY", "ALLOW", "REQUIRE_APPROVAL"]
+
+
+@dataclass(frozen=True)
+class Decision:
+    outcome: Outcome
+    reason: str
+
+
+def decide(policy: Policy, action: Action, *, tainted: bool) -> Decision:
+    """Deterministic decision for one validated action. No model is consulted.
+
+    Order: default deny, hard constraints, taint denial, then the tier.
+    An R2 action is never ALLOW.
+    """
+    tool = policy.tools.get(action.tool)
+    if tool is None:
+        return Decision("DENY", "tool_not_in_policy")
+    if tool.constraints is not None:
+        if action.args["currency"] not in tool.constraints.currency:
+            return Decision("DENY", "currency_not_allowed")
+        limit = amount_to_cents(tool.constraints.max_amount)
+        if amount_to_cents(action.args["amount"]) > limit:
+            return Decision("DENY", "amount_over_limit")
+    if tainted and tool.on_tainted_session == "deny":
+        return Decision("DENY", "tainted_session")
+    if TOOL_TIERS[action.tool] == "R2":
+        return Decision("REQUIRE_APPROVAL", "irreversible_action")
+    if tainted and tool.on_tainted_session == "require_approval":
+        return Decision("REQUIRE_APPROVAL", "tainted_session")
+    return Decision("ALLOW", "within_policy")

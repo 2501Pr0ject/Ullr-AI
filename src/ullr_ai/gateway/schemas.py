@@ -168,3 +168,36 @@ def validate_action(tool: Any, resource_id: Any, args: Any) -> Action:
     except CanonError:
         raise SchemaError("action cannot be canonicalized") from None
     return Action(tool=tool, resource_id=resource_id, args=validated, action_hash=digest)
+
+
+MAX_REASON_LENGTH = 500
+_EXECUTION_KEYS = frozenset({"tool", "resource_id", "args"})
+_PROPOSAL_KEYS = _EXECUTION_KEYS | {"reason"}
+
+
+def parse_execution(request: Any) -> Action:
+    """Validate a ``{tool, resource_id, args}`` request body."""
+    if type(request) is not dict or set(request) != _EXECUTION_KEYS:
+        raise SchemaError("invalid request envelope")
+    return validate_action(request["tool"], request["resource_id"], request["args"])
+
+
+def parse_proposal(request: Any) -> tuple[Action, str]:
+    """Validate a ``{tool, resource_id, args, reason}`` proposal body.
+
+    ``reason`` is the agent's unverified statement. It is single-line free
+    text, it is not hashed, and it has no effect on any decision. Identity
+    fields (``agent_id``, ``session_id``) are not part of the envelope: they
+    come from the token, so supplying them is an unknown-field rejection.
+    """
+    if type(request) is not dict or set(request) != _PROPOSAL_KEYS:
+        raise SchemaError("invalid request envelope")
+    reason = request["reason"]
+    if type(reason) is not str or len(reason) > MAX_REASON_LENGTH:
+        raise SchemaError("invalid reason")
+    try:
+        check_text(reason)
+    except CanonError:
+        raise SchemaError("invalid reason") from None
+    action = validate_action(request["tool"], request["resource_id"], request["args"])
+    return action, reason
