@@ -1,6 +1,6 @@
 # Threat Model
 
-Status: v1.3. Since v1.2: status vocabulary of `EVIDENCE.md` in §7, three non-guarantees (in-flight lookup after revocation, peer agents, effect after revocation), H1–H7 named consistently. Nothing is adversarially verified yet.
+Status: v1.4. Since v1.3: the status column of §7 reflects L2 run 2, and two non-guarantees are added (host services reachable from trusted containers, taint not carried by written resources). Verification rests on one L2 run on one platform; L3 has not run.
 
 ## 1. Scope
 
@@ -81,30 +81,30 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 
 ## 7. Threats and mitigations
 
-"Planned verification" names the evaluation layers meant to cover a threat. "Status" uses the levels of [`EVIDENCE.md`](EVIDENCE.md): unit-tested, integration-tested, container-tested, adversarially verified, not verified. Today no threat is container-tested or adversarially verified.
+"Planned verification" names the evaluation layers meant to cover a threat. "Status" uses the levels of [`EVIDENCE.md`](EVIDENCE.md): unit-tested, integration-tested, container-tested, adversarially verified, not verified. "Adversarially verified in L2 run 2" means the attacks listed in `EVIDENCE.md` were attempted from inside the agent container and failed, with passing positive controls, in one run on one platform.
 
 | ID | Threat | Adversary | Mitigation | Planned verification | Status |
 |---|---|---|---|---|---|
-| T1 | Agent calls a protected tool directly, bypassing the Gateway | ADV3 | Tools reachable only on an internal network the agent is not attached to; executor credential held by the Gateway only | L2 | Not verified. Integration-tested for the executor-token check only |
-| T2 | R2 action executed without approval | ADV1–3 | Tier R2 ⇒ `REQUIRE_APPROVAL`; default deny | L1, L3 | Integration-tested. L3 not run. Not container-tested |
-| T3 | Approval replayed for a second execution | ADV3 | Single-use approval consumed atomically; idempotency key enforced by the Tools service | L1, L2 | Integration-tested; not adversarially verified |
-| T4 | Arguments changed after approval (approve doc A, delete doc B) | ADV1–3 | Approval bound to the canonical action hash; hash recomputed at execution | L1, L2 | Unit-tested, integration-tested; not adversarially verified |
-| T5 | Resource modified between approval and execution | ADV1–3 | Approval bound to the resource version; the Tools service enforces the precondition | L1 | Integration-tested. Not container-tested |
-| T6 | Agent approves its own request, or forges an approver identity | ADV3 | Decision valid only with a signature from a registered approver key over the full payload | L1, L2 | Unit-tested, integration-tested; not adversarially verified |
-| T7 | Expired approval used | ADV1–3 | Gateway-side expiry check at execution time | L1 | Integration-tested. Not container-tested |
-| T8 | Split transactions to stay under per-action limits, possibly across several agents | ADV1, ADV3 | Cumulative budget per account (global) plus per agent, checked and reserved in the execution transaction | L1, L2, L3 | Integration-tested (threads in one process); not adversarially verified, L3 not run |
-| T9 | Unknown tool, alias or case variant of a protected tool | ADV3 | Exact allow-list of canonical tool names | L1, L2 | Unit-tested, integration-tested; not adversarially verified |
-| T10 | Malformed or ambiguous arguments (extra fields, duplicate keys, floats, path syntax, Unicode variants) | ADV2, ADV3 | Strict per-tool formats; values not provably equivalent to a canonical form are rejected, never normalized by guess | L1, L2 | Unit-tested, integration-tested; not adversarially verified |
-| T11 | Injected instruction produces a plausible approval request that a human accepts | ADV1 | Gateway-derived provenance shown in the approval request; policy escalation for tainted sessions | L3 | Integration-tested, for what the request displays. L3 not run. Not container-tested |
-| T12 | Agent forges or launders provenance. Laundering scenario: the agent reads injected content in session A, then proposes the R2 action from a clean session B, so that the approver sees clean provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored. Sessions are created only by a trusted party through an admin-only endpoint; an agent token is bound to exactly one session; the agent API cannot create or switch sessions, nor reset provenance | L1 | Unit-tested, integration-tested. Not container-tested |
-| T13 | Gateway error, approval timeout or tool timeout leads to execution | ADV2, ADV3 | Fail closed on every error path | L1 | Integration-tested. Not container-tested |
-| T14 | Concurrent executions consume one approval twice | ADV3 | Serialized consumption transaction + Tools-side idempotency | L2 | Integration-tested (threads in one process); not adversarially verified |
-| T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the security state transition; append-only triggers; hash chain with verification. Truncation detection and external anchoring are deferred | L1 | Unit-tested, integration-tested. Not container-tested |
-| T16 | Approval flooding to induce fatigue | ADV1, ADV3 | Limit on pending approvals per session; approval burden measured | L3 | Integration-tested, for the limit. L3 not run. Not container-tested |
-| T17 | Policy changed after approval; old approval still used | Operator change + ADV1–3 | Approval bound to the policy hash; mismatch ⇒ invalidated | L1 | Unit-tested, integration-tested. Not container-tested |
-| T18 | Session becomes tainted after approval; approval still used | ADV1 | Approval bound to the session's provenance version; mismatch ⇒ invalidated | L1 | Integration-tested. Not container-tested |
-| T19 | Crash or timeout after consumption leads to double execution or silent budget loss | ADV3 (induced faults) | Execution and budget state machines; idempotency key; reconciliation before any budget release | L1 (fault injection) | Integration-tested, with simulated faults. Not container-tested |
-| T20 | Agent reaches evaluation endpoints (reset, snapshot) | ADV3 | Admin API on a separate network and token, controller only | L2 | Integration-tested, for token and route separation; not adversarially verified |
+| T1 | Agent calls a protected tool directly, bypassing the Gateway | ADV3 | Tools reachable only on an internal network the agent is not attached to; executor credential held by the Gateway only | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T2 | R2 action executed without approval | ADV1–3 | Tier R2 ⇒ `REQUIRE_APPROVAL`; default deny | L1, L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T3 | Approval replayed for a second execution | ADV3 | Single-use approval consumed atomically; idempotency key enforced by the Tools service | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T4 | Arguments changed after approval (approve doc A, delete doc B) | ADV1–3 | Approval bound to the canonical action hash; hash recomputed at execution | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T5 | Resource modified between approval and execution | ADV1–3 | Approval bound to the resource version; the Tools service enforces the precondition | L1 | Integration-tested |
+| T6 | Agent approves its own request, or forges an approver identity | ADV3 | Decision valid only with a signature from a registered approver key over the full payload | L1, L2 | Unit-tested, integration-tested. L2 run 2: no decision route or approver key within the agent's reach; forged signatures not attacked across containers |
+| T7 | Expired approval used | ADV1–3 | Gateway-side expiry check at execution time | L1 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T8 | Split transactions to stay under per-action limits, possibly across several agents | ADV1, ADV3 | Cumulative budget per account (global) plus per agent, checked and reserved in the execution transaction | L1, L2, L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T9 | Unknown tool, alias or case variant of a protected tool | ADV3 | Exact allow-list of canonical tool names | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T10 | Malformed or ambiguous arguments (extra fields, duplicate keys, floats, path syntax, Unicode variants) | ADV2, ADV3 | Strict per-tool formats; values not provably equivalent to a canonical form are rejected, never normalized by guess | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T11 | Injected instruction produces a plausible approval request that a human accepts | ADV1 | Gateway-derived provenance shown in the approval request; policy escalation for tainted sessions | L3 | Integration-tested, for what the request displays. L3 not run |
+| T12 | Agent forges or launders provenance. Laundering scenario: the agent reads injected content in session A, then proposes the R2 action from a clean session B, so that the approver sees clean provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored. Sessions are created only by a trusted party through an admin-only endpoint; an agent token is bound to exactly one session; the agent API cannot create or switch sessions, nor reset provenance | L1 | Unit-tested, integration-tested. L2 run 2: sessions cannot be created, switched or reused after revocation; peer agents and written resources remain open channels |
+| T13 | Gateway error, approval timeout or tool timeout leads to execution | ADV2, ADV3 | Fail closed on every error path | L1 | Integration-tested |
+| T14 | Concurrent executions consume one approval twice | ADV3 | Serialized consumption transaction + Tools-side idempotency | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the security state transition; append-only triggers; hash chain with verification. Truncation detection and external anchoring are deferred | L1 | Unit-tested, integration-tested. Container-tested: chain verified after three container kills. Tampering not attacked in L2 |
+| T16 | Approval flooding to induce fatigue | ADV1, ADV3 | Limit on pending approvals per session; approval burden measured | L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T17 | Policy changed after approval; old approval still used | Operator change + ADV1–3 | Approval bound to the policy hash; mismatch ⇒ invalidated | L1 | Unit-tested, integration-tested |
+| T18 | Session becomes tainted after approval; approval still used | ADV1 | Approval bound to the session's provenance version; mismatch ⇒ invalidated | L1 | Integration-tested |
+| T19 | Crash or timeout after consumption leads to double execution or silent budget loss | ADV3 (induced faults) | Execution and budget state machines; idempotency key; reconciliation before any budget release | L1 (fault injection) | Adversarially verified in L2 run 2, for the attacks attempted |
+| T20 | Agent reaches evaluation endpoints (reset, snapshot) | ADV3 | Admin API on a separate network and token, controller only | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
 
 ## 8. Security goals (invariants)
 
@@ -128,5 +128,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 - Revocation bounds authorization, not effects: an action authorized before a session is revoked may take effect in the Tools service after the revocation.
 - A mutating request revoked while in flight can still learn from the resource lookup whether a resource exists.
 - Agent containers that share a network can exchange content and session tokens directly, outside the Gateway's view. Like memory carried across sessions (H7), this can bring injected content into a clean session.
+- Taint is not carried by written resources: a tainted session can write an internal document that another session then reads as trusted. A design that makes written resources inherit taint is deferred.
+- On Docker Desktop, the trusted containers can reach services of the Docker virtual machine through the bridge addresses of their networks. The agent networks are configured without such an address.
 - A compromised LLM relay is an egress path, and the model server's request parser on the host is exposed to the agent through it.
 - Truncation of the audit log is not detected: the chain head is not anchored outside the Gateway (deferred).
