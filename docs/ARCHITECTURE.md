@@ -56,17 +56,26 @@ Status: v1.0
 
 ## 4. Canonicalization (canon v1)
 
-Hashing uses a canonical JSON encoding: UTF-8, sorted keys, no insignificant whitespace, strings only for decimal values. Parsing rejects duplicate keys, `NaN`/`Infinity`, and floats in amount fields.
+Hashing uses a canonical JSON encoding: UTF-8 (non-ASCII characters are not escaped), keys sorted by Unicode code point, no insignificant whitespace, strings only for decimal values. Parsing rejects duplicate keys, `NaN`/`Infinity`, every float (any number with a fraction or an exponent, and `-0`) and integers outside ±(2^53 − 1).
 
 Per-tool rules:
 
 | Field type | Rule |
 |---|---|
 | Resource identifiers | Opaque IDs issued by the Tools service, strict pattern (e.g. `^doc_[0-9]{1,8}$`). No path syntax: `./doc_1` is rejected, not normalized. |
-| Amounts | JSON string `^[0-9]{1,7}\.[0-9]{2}$` + currency code from an allow-list. Numbers are rejected. |
+| Amounts | JSON string `^(0\|[1-9][0-9]{0,6})\.[0-9]{2}$` (no leading zeros), strictly positive, + currency code from an allow-list. Numbers are rejected. |
 | E-mail recipients | Referenced by `contact_id` from the Tools directory, not by raw address. |
-| Free text (subject, body, config values) | Must be valid UTF-8 in NFC; control characters rejected; hashed byte-exact. |
+| Free text (subject, body, config values) | Must be valid UTF-8 in NFC; characters in Unicode categories Cc, Cf, Cs, Co, Cn, Zl and Zp are rejected (control, invisible format, surrogate, private-use, unassigned, line and paragraph separators). Only exception: U+000A in multi-line fields (e-mail body, document content). Hashed byte-exact. |
 | Unknown fields | Rejected (strict Pydantic models, `extra="forbid"`, no coercion). |
+
+The action hash covers the tool, the resource and the validated arguments:
+
+```
+action_hash = "sha256:" || hex(SHA-256(canonical_json(
+  {"args": {…}, "canon_version": 1, "resource_id": …, "tool": …})))
+```
+
+`reason` is not hashed. `agent_id` and `session_id` are bound by the signed decision (§7), not by the hash.
 
 `canon_version` is stored in each approval. A change of rules invalidates outstanding approvals.
 
@@ -217,3 +226,5 @@ For the comparative experiment, the agent gets a direct client to the Tools exec
 ## 12. Technology
 
 Python 3.12, FastAPI, Pydantic v2 (strict), SQLite (WAL), `cryptography` (Ed25519), pytest, Docker Compose, Ollama.
+
+Canon v1 relies on the Unicode database of the interpreter (NFC, general categories). It is pinned to Python 3.12 (Unicode 15.0): every Docker image must use Python 3.12. Another Unicode version requires a new `canon_version`.
