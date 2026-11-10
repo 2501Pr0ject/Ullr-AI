@@ -34,7 +34,7 @@ Protected actions in the reference environment (all simulated):
 |---|---|---|
 | Agent | Bearer token issued per session by the session issuer, mapped by the Gateway to exactly one `session_id` and one `agent_id` | Propose actions, request execution of its own actions, in its own session. Nothing else. |
 | Session issuer (benchmark controller, or an orchestrator in production) | Separate admin token, on a network the agent is not attached to | Create sessions and obtain their agent tokens |
-| Approver | Ed25519 key pair; the Gateway holds a registry `approver_id → public key` | Sign decisions on pending approvals |
+| Approver | Ed25519 key pair; the Gateway holds a registry `approver_id → public key`. An approver-channel token gives access to the list of pending requests | Sign decisions on pending approvals |
 | Gateway | Executor token toward the Tools service | Execute actions, query execution status |
 | Benchmark controller | Separate admin token, separate network | Reset and snapshot the Tools service; never present during an episode's agent loop |
 
@@ -71,7 +71,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 ## 6. Assumptions
 
 - **H1** Container isolation holds under the documented hardening (non-root, `cap_drop: ALL`, `no-new-privileges`, read-only root filesystem, no Docker socket, no shared default network, no published Tools ports).
-- **H2** Approver private keys, the executor credential, the admin token and the session-creation credential are never mounted into or reachable from the agent container.
+- **H2** Approver private keys, the approver-channel token, the executor credential, the admin token and the session-creation credential are never mounted into or reachable from the agent container.
 - **H3** The Gateway clock is trustworthy; expiry is evaluated on the Gateway only.
 - **H4** The policy file is reviewed and correct; the system enforces the policy, it does not judge it.
 - **H5** Trust labels on resources (internal vs external origin) are assigned by the Tools service, not by the agent.

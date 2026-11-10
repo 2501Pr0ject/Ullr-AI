@@ -43,7 +43,7 @@ Status: v1.0
 |---|---|---|
 | Agent | Tool-calling loop over Ollama; proposes actions to the Gateway | Agent token only |
 | Gateway | Single decision and execution point for every tool call, reads included | Executor token, approver registry, policy |
-| Approver CLI | Displays approval requests with provenance; signs decisions | One approver private key |
+| Approver CLI | Displays approval requests with provenance; signs decisions | One approver private key, the approver-channel token |
 | Tools service | Simulated stateful backends. Enforces executor token, idempotency keys and version preconditions itself. Labels resources `internal`/`external`. | Simulated data, execution table |
 | Benchmark controller | Seeds and resets state, snapshots final state, runs episodes | Admin token |
 
@@ -143,8 +143,8 @@ The approver signs, with Ed25519:
   "provenance_version": 4,
   "approver_id": "human_01",
   "nonce": "…",
-  "issued_at": "2026-11-11T10:00:00Z",
-  "expires_at": "2026-11-11T10:05:00Z"
+  "issued_at": "2026-11-11T10:00:00.000000Z",
+  "expires_at": "2026-11-11T10:05:00.000000Z"
 }
 ```
 
@@ -156,6 +156,12 @@ The Gateway accepts a decision only if:
 - the record is still `PENDING_APPROVAL`.
 
 The domain-separation prefix prevents the signature from being reused in another context.
+
+Timestamps are UTC with microseconds, in the one format shown above. A decision that fails any check changes nothing: it cannot consume or cancel a pending approval. The same checks run again inside the execute transaction, against the registry as it is then.
+
+The approver channel is a separate Gateway application. Listing pending requests requires an approver-channel token, never mounted in the agent container; a decision is authenticated by its signature alone. A request shows the action and its arguments, the agent, the resource, the taint status and observed sources, and the agent's stated reason under a label that marks it unverified.
+
+A session may hold at most `max_pending_per_session` pending approvals; a further proposal that would need one is denied.
 
 ## 8. Execution
 
@@ -172,6 +178,8 @@ Action:  PROPOSED → DENIED
                                             EXECUTING → COMMITTED
                                                       → FAILED
                                                       → UNKNOWN → (reconcile) → COMMITTED | FAILED
+
+An `APPROVED` action can still become `EXPIRED` or `INVALIDATED` before it is consumed.
 
 Budget reservation:  RESERVED → COMMITTED
                               → RELEASED   (only once the Tools service confirms non-execution)
@@ -203,9 +211,11 @@ A session is created by a trusted party (the benchmark controller here, an orche
      - timeout or lost response ⇒ `UNKNOWN`, budget held.
 
    There is no atomic transaction across the Gateway database and the Tools service. The guarantee comes from the order (intent recorded before the call, outcome after it), from the idempotency key enforced by the Tools service, and from keeping `UNKNOWN` until reconciliation.
-7. **Reconcile** `UNKNOWN` (and any `EXECUTING` found at Gateway start-up) by querying `GET /executions/{execution_id}` on the Tools service.
+7. **Reconcile** `UNKNOWN` (and any `EXECUTING` found at Gateway start-up, when no call can be in flight) by asking the Tools service to resolve the `execution_id` (`POST /executions/{execution_id}/resolve`). The answer is `EXECUTED` or `FAILED`. A key the Tools service has never seen is recorded there as failed in the same step, so a request lost in transit cannot execute after its budget has been released.
 
 An approval is never restored after consumption. Any retry requires a new approval.
+
+Budgets use a rolling window on the Gateway clock. `RESERVED`, `HELD` and `COMMITTED` reservations all count against a cap. If a cap would be exceeded, the execute transaction writes nothing and the approval stays unconsumed.
 
 ## 9. Audit
 
