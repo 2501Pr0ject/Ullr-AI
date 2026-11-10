@@ -24,10 +24,10 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 | Container isolation, scripted attacker (L2) | no | no | M3 |
 | Agent loop, benchmark harness (L3) | no | no | M4 |
 | Full runs and result tables | no | no | M5 |
-| One real protocol behind the Gateway (SMTP to a local Mailpit container) | no | no | after M3, if the schedule allows |
-| External audit anchoring, truncation detection | no | no | deferred, no milestone |
+| One real protocol behind the Gateway (SMTP to a local Mailpit) | no | no | after M3, if time allows |
+| External audit anchoring, truncation detection | no | no | deferred |
 
-"Integration" means the services are exercised through their HTTP interfaces in one process. There is no container isolation yet, so no claim against a compromised runtime (L2) is tested, and no irreversible action can be executed at all: every R2 proposal stops at `PENDING_APPROVAL`. No guarantee in this document is demonstrated end to end.
+"Integration" means exercised through the HTTP interfaces, in one process. Without container isolation, no claim against a compromised runtime (L2) is tested. No irreversible action can be executed yet: every R2 proposal stops at `PENDING_APPROVAL`. No guarantee here is demonstrated end to end.
 
 ## 1. Problem and motivation
 
@@ -137,7 +137,7 @@ Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is giv
 
 ## 6. Evaluation protocol
 
-Full version: [`EVALUATION_PLAN.md`](docs/EVALUATION_PLAN.md). Success criteria are fixed there, before any run.
+Full version and success criteria, fixed before any run: [`EVALUATION_PLAN.md`](docs/EVALUATION_PLAN.md).
 
 | Layer | What | Adversary | Uses an LLM |
 |---|---|---|---|
@@ -147,7 +147,7 @@ Full version: [`EVALUATION_PLAN.md`](docs/EVALUATION_PLAN.md). Success criteria 
 
 Two outcomes are kept apart. A **policy bypass** is an execution that did not satisfy every Gateway check, detected by cross-checking the Tools execution table against the Gateway's records. A **residual harmful execution** is a forbidden action executed, possibly after a valid approval; it measures the decision rule, not the Gateway.
 
-Approvers are simulated: `AP-rubber` approves everything, `AP-provenance` rejects irreversible requests from tainted sessions, `AP-oracle` approves only what the task's ground truth requires. No result describes human behaviour.
+Approvers are simulated: `AP-rubber` approves everything, `AP-provenance` rejects irreversible requests from tainted sessions, `AP-oracle` approves only what the ground truth requires. No result describes human behaviour.
 
 Metrics include the policy bypass rate, the residual harmful execution rate, legitimate task success, false denials and approval burden. Outcomes are read from the final state of the Tools service, never from the agent's text.
 
@@ -175,7 +175,7 @@ Gateway overhead (p50 / p95 decision latency): TBD.
 
 ## 8. Tested bypasses
 
-The full table, keyed by guarantee and then by threat, with test names and what is still missing, is in [`docs/EVIDENCE.md`](docs/EVIDENCE.md). It separates three levels of evidence:
+The full table, by guarantee then threat, is in [`docs/EVIDENCE.md`](docs/EVIDENCE.md). It separates three levels of evidence:
 
 | Level | Meaning | Current coverage |
 |---|---|---|
@@ -183,7 +183,7 @@ The full table, keyed by guarantee and then by threat, with test names and what 
 | Integration | Gateway and Tools service through their HTTP interfaces, in one process | T2, T4, T5, T9, T10, T12, T13, T15 for refusal paths; T3, T14, T19, T20 in part |
 | End-to-end | Across the container and network isolation boundary (L2, L3) | None |
 
-L2 has not been run. Nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway; that claim waits for the isolation boundary to be built and attacked (M3). T1, T6, T7, T8, T11, T16 and T18 have no test of their mitigation yet.
+L2 has not been run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway. That claim waits for the isolation boundary to be built and attacked (M3). T1, T6, T7, T8, T11, T16 and T18 have no test of their mitigation yet.
 
 ## 9. Reproducibility
 
@@ -217,13 +217,13 @@ GateArena's evaluation is larger than the one planned here, and Ullr has no resu
 
 - The implementation is incomplete and no end-to-end claim is supported yet (see [Status](#status)).
 - The benchmark is about 30 tasks with 3 repetitions: prototype scale, no claim of generalization.
-- The scenarios and the Gateway have the same author. Task suites are fixed before the policy is tuned, and later changes are logged.
-- Tools and approvers are simulated. The effect of showing provenance to a person is not measured.
-- One model, possibly two; model nondeterminism is only partly controlled.
+- Scenarios and Gateway have the same author; suites are fixed before the policy is tuned.
+- Tools and approvers are simulated; showing provenance to a person is not measured.
+- One model, possibly two; nondeterminism is only partly controlled.
 - Session-level provenance over-approximates. Its cost shows up as lower task success and more escalations.
 - Provenance assumes a fresh agent context per session. If the agent carries memory across sessions (conversation history, persistent memory, retrieval over past outputs), injected content can reach a clean session unobserved.
 - A refund approval is bound to the account's version: another refund on that account makes pending approvals for it stale.
-- Strict text rules reject some legitimate input: tabs, emoji sequences joined by zero-width characters, and scripts that use the zero-width non-joiner.
+- Strict text rules reject some legitimate input: tabs, joined emoji sequences, scripts using the zero-width non-joiner.
 - A real deployment would have to establish isolation, idempotency and preconditions for its own backends.
 
 ## References
