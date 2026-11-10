@@ -97,6 +97,9 @@ services:
   controller:
     <<: [*service, *idle]
     secrets: [tools_admin_token, gateway_admin_token]
+    environment:
+      ULLR_TOOLS_ADMIN_URL: http://tools-admin:8000
+      ULLR_GATEWAY_ADMIN_URL: http://gateway-admin:8000
     volumes:
       - episode_1:/episodes/1
       - episode_2:/episodes/2
@@ -129,8 +132,13 @@ volumes:
   episode_3:
 
 networks:
-  net_agent: {internal: true, ipam: {config: [{subnet: 172.30.0.0/28}]}}
-  net_llm: {internal: true, ipam: {config: [{subnet: 172.30.0.16/28}]}}
+  # Fixed addresses (.2 and .18) sit outside the range used for dynamic allocation.
+  net_agent:
+    internal: true
+    ipam: {config: [{subnet: 172.30.0.0/28, ip_range: 172.30.0.8/29}]}
+  net_llm:
+    internal: true
+    ipam: {config: [{subnet: 172.30.0.16/28, ip_range: 172.30.0.24/29}]}
   net_tools: {internal: true, ipam: {config: [{subnet: 172.30.0.32/28}]}}
   net_approval: {internal: true, ipam: {config: [{subnet: 172.30.0.48/28}]}}
   net_admin: {internal: true, ipam: {config: [{subnet: 172.30.0.64/28}]}}

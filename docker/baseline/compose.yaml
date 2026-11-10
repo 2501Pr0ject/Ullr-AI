@@ -1,0 +1,53 @@
+# Unprotected baseline: the same agent image talks to a Tools service directly.
+#
+# A separate Compose project with its own Tools instance, networks, state and
+# credentials. Nothing here refers to the protected project: no shared network,
+# volume or secret. The executor token given to the agent is the baseline's own.
+name: ullr-baseline
+
+x-service: &service
+  image: ullr-ai:local
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+  pids_limit: 512
+  restart: "no"
+
+x-idle: &idle
+  entrypoint: ["python", "-c", "import signal; signal.pause()"]
+
+services:
+  agent:
+    <<: [*service, *idle]
+    secrets: [executor_token]
+    networks: [base_tools]
+  tools-executor:
+    <<: *service
+    environment: {ULLR_ROLE: tools-executor, ULLR_TOOLS_DB: /data/tools/tools.db}
+    secrets: [executor_token]
+    volumes: ["tools_state:/data/tools"]
+    networks: [base_tools]
+  tools-admin:
+    <<: *service
+    environment: {ULLR_ROLE: tools-admin, ULLR_TOOLS_DB: /data/tools/tools.db}
+    secrets: [tools_admin_token]
+    volumes: ["tools_state:/data/tools"]
+    networks: [base_control]
+  controller:
+    <<: [*service, *idle]
+    environment: {ULLR_TOOLS_ADMIN_URL: "http://tools-admin:8000"}
+    secrets: [tools_admin_token]
+    networks: [base_control]
+
+secrets:
+  executor_token: {file: ../../secrets/baseline_executor_token}
+  tools_admin_token: {file: ../../secrets/baseline_tools_admin_token}
+
+volumes:
+  tools_state:
+
+networks:
+  base_tools: {internal: true, ipam: {config: [{subnet: 172.30.1.0/28}]}}
+  base_control: {internal: true, ipam: {config: [{subnet: 172.30.1.16/28}]}}
