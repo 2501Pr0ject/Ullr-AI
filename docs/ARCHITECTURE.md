@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.1. Since v1.0: canon v1 details and the action hash (§4), sessions, in-request execution of allowed actions, decision before any Tools lookup and key resolution (§8), the approver channel (§7), and a narrower audit scope (§9). The design evolves with the implementation; the history has every change. Container isolation (§3) is not built yet.
+Status: v1.2. Since v1.1: topology by authorized clients with separate Gateway and Tools containers, the LLM relay contract, token handover and revocation, SQLite settings (§3), and reconciliation running only in the Gateway API process (§8). The stack and the scripted attacker are implemented; no run across the isolation boundary has completed yet.
 
 ## 1. Design principles
 
@@ -49,10 +49,65 @@ Status: v1.1. Since v1.0: canon v1 details and the action hash (§4), sessions, 
 
 ## 3. Network and hardening
 
-- Networks: `net_agent` (agent ↔ Gateway), `net_llm` (agent ↔ Ollama), `net_approval` (approver ↔ Gateway), `net_tools` (`internal: true`, Gateway ↔ Tools executor API), `net_control` (`internal: true`, controller ↔ Tools admin API).
-- No service uses the default network. No Tools port is published on the host.
-- All containers: non-root, `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, no Docker socket, secrets mounted only where listed above.
-- The Tools service listens on two ports: executor API on `net_tools`, admin API on `net_control`. Each requires its own token.
+The diagram in §2 shows the logical components. The deployment splits them into nine containers so that reachability follows from network membership: a container that holds a privileged credential shares no network with the agent, except the agent-facing Gateway API.
+
+### Topology by authorized clients
+
+| Container | Networks | Authorized clients | Enforced by |
+|---|---|---|---|
+| `agent` (untrusted) | `net_agent`, `net_llm` | none | — |
+| `gateway-api` | `net_agent`, `net_tools` | agent | session token; the only Gateway process with Tools access |
+| `gateway-admin` (sessions, revocation, read-only state) | `net_admin` | controller | admin token; no network shared with the agent or the Tools service |
+| `gateway-approver` | `net_approval` | approver | channel token for listing, signature for decisions; no Tools network |
+| `tools-executor` | `net_tools` | `gateway-api` | executor token |
+| `tools-admin` | `net_control` | controller | Tools admin token |
+| `approver` | `net_approval` | none | — |
+| `controller` | `net_admin`, `net_control` | none | — |
+| `llm-relay` | `net_llm`, `net_egress` | agent | relay contract below |
+
+- Every network is `internal: true` except `net_egress`, which only the relay joins. No port is published on the host, no service uses a default network, and no container mounts the Docker socket.
+- Each container runs one application on one port. `gateway-api` contains no client for the admin or approver applications and relays nothing to them.
+- The three Gateway containers share one SQLite database on a named volume; the two Tools containers share another. The agent mounts neither.
+- All containers: Python 3.12 image pinned by digest, fixed non-root user, `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, a small tmpfs for `/tmp`.
+
+### Secrets
+
+Secrets are files mounted read-only in the containers of their role, never environment variables. A process that needs a secret it was not given refuses to start.
+
+| Secret | Held by |
+|---|---|
+| Executor token | `gateway-api`, `tools-executor` |
+| Tools admin token | `tools-admin`, `controller` |
+| Gateway admin token (session creation and revocation) | `gateway-admin`, `controller` |
+| Approver-channel token | `gateway-approver`, `approver` |
+| Approver private key | `approver` |
+| Agent session token | issued per episode; `controller` → volume → `agent` |
+
+The Gateway receives only the public approver registry.
+
+### Episode token
+
+The controller creates a session and writes its token to a volume that it mounts read-write and the agent mounts read-only. There is no network path between the two. At the end of the episode the controller revokes the session; the file is then replaced atomically by the next token, so the volume holds one token. Revocation is enforced by the Gateway, not by removing the file (§8).
+
+### LLM relay
+
+The model runs on the host, bound to its loopback interface. The agent reaches it only through the relay:
+
+- method and route: `POST /api/chat`, nothing else;
+- model: must be on the configured allow-list (`qwen3:8b`);
+- body: bounded size, strict JSON, fields limited to `model`, `messages`, `tools`, `stream`, `options`, `think`; `stream` is always false upstream; unknown fields and unknown options are rejected;
+- destination: fixed in the relay's configuration. There is no destination parameter, no generic proxying, no redirect following;
+- `/api/pull`, `/api/push`, `/api/create`, `/api/delete`, `/api/copy` and the other model-management routes are refused explicitly; any other route does not exist.
+
+At start-up the relay checks that the upstream answers and serves the allowed model, and logs the model's digest. `net_egress` is an additional trust boundary: the relay is the one container with a route out, so a compromised relay is an egress path.
+
+### SQLite
+
+Every connection sets `journal_mode=WAL` and `synchronous=FULL` and verifies both; a service refuses to start on a database that cannot honour them. Databases live on named volumes, not on host bind mounts.
+
+### Baseline
+
+The unprotected comparison is a separate Compose project with its own Tools service, networks, state and credentials. It shares nothing with the protected project.
 
 ## 4. Canonicalization (canon v1)
 
@@ -190,7 +245,7 @@ Budget reservation:  RESERVED → COMMITTED
 
 ### Sessions
 
-A session is created by a trusted party (the benchmark controller here, an orchestrator in production) through an admin-only Gateway endpoint, on a network and with a credential the agent container never has. The endpoint returns an agent token bound to exactly one `session_id` and one `agent_id`. The agent API offers no way to create a session, switch session, or reset provenance: otherwise an agent could read injected content in one session and propose the resulting action from a clean one.
+A session is created, and later revoked, by a trusted party (the benchmark controller here, an orchestrator in production) through an admin-only Gateway application, on a network and with a credential the agent container never has. A revoked session stays revoked; its pending and approved actions are invalidated. Revocation is checked against the database on every request, again inside the transaction that would record or consume anything: once a revocation is committed, a request already in progress authorizes and executes nothing new. The endpoint returns an agent token bound to exactly one `session_id` and one `agent_id`. The agent API offers no way to create a session, switch session, or reset provenance: otherwise an agent could read injected content in one session and propose the resulting action from a clean one.
 
 ### Steps
 
@@ -213,7 +268,7 @@ A session is created by a trusted party (the benchmark controller here, an orche
      - timeout or lost response ⇒ `UNKNOWN`, budget held.
 
    There is no atomic transaction across the Gateway database and the Tools service. The guarantee comes from the order (intent recorded before the call, outcome after it), from the idempotency key enforced by the Tools service, and from keeping `UNKNOWN` until reconciliation.
-7. **Reconcile** `UNKNOWN` (and any `EXECUTING` found at Gateway start-up, when no call can be in flight) by asking the Tools service to resolve the `execution_id` (`POST /executions/{execution_id}/resolve`). The answer is `EXECUTED` or `FAILED`. A key the Tools service has never seen is recorded there as failed in the same step, so a request lost in transit cannot execute after its budget has been released.
+7. **Reconcile**, in the Gateway API process only (the admin and approver processes have no access to the Tools service): `UNKNOWN` in a background loop, and any `EXECUTING` found at start-up, when no call can be in flight. Reconciliation asks the Tools service to resolve the `execution_id` (`POST /executions/{execution_id}/resolve`). The answer is `EXECUTED` or `FAILED`. A key the Tools service has never seen is recorded there as failed in the same step, so a request lost in transit cannot execute after its budget has been released.
 
 An approval is never restored after consumption. Any retry requires a new approval.
 
