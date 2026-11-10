@@ -35,9 +35,7 @@ def main(argv: list[str]) -> int:
         (target / name).write_text(secrets.token_urlsafe(48) + "\n", encoding="ascii")
     private, public = signing.generate_keypair()
     (target / "approver_private_key").write_text(private + "\n", encoding="ascii")
-    (target / "approvers.yaml").write_text(
-        f'approvers:\n  human_1: "{public}"\n', encoding="ascii"
-    )
+    (target / "approvers.yaml").write_text(f'approvers:\n  human_1: "{public}"\n', encoding="ascii")
     print(f"wrote {len(TOKENS) + 2} files to {target}")
     return 0
 
