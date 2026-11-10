@@ -178,23 +178,31 @@ Budget reservation:  RESERVED → COMMITTED
                               → HELD       (while UNKNOWN)
 ```
 
+### Sessions
+
+A session is created by a trusted party (the benchmark controller here, an orchestrator in production) through an admin-only Gateway endpoint, on a network and with a credential the agent container never has. The endpoint returns an agent token bound to exactly one `session_id` and one `agent_id`. The agent API offers no way to create a session, switch session, or reset provenance: otherwise an agent could read injected content in one session and propose the resulting action from a clean one.
+
 ### Steps
 
-1. **Propose** `POST /v1/actions` with `{session_id, tool, resource_id, args, reason}`. `agent_id` comes from the token.
+1. **Propose** `POST /v1/actions` with `{tool, resource_id, args, reason}`. `agent_id` and `session_id` come from the token, never from the payload.
 2. **Validate and canonicalize** (§4), then compute `action_hash`.
 3. **Decide** from the policy (§5): `DENY`, `ALLOW` (R0/R1 within constraints), or `REQUIRE_APPROVAL`.
-4. **Execute** `POST /v1/actions/{id}/execute` with the arguments sent **again**. In one `BEGIN IMMEDIATE` transaction, the Gateway:
+4. **`ALLOW`**: the Gateway executes within the same request, through the internal execution path (step 6), and returns the result in one round trip. Decision and intent are recorded in one transaction, so a provenance change between two calls cannot invalidate a read.
+5. **`REQUIRE_APPROVAL`**: the action is recorded as `PENDING_APPROVAL`. Once a signed decision has approved it, the agent calls `POST /v1/actions/{id}/execute` with the arguments sent **again**. In one `BEGIN IMMEDIATE` transaction, the Gateway:
    - verifies status, expiry, signature, `action_hash`, `policy_hash`, `canon_version` and `provenance_version`;
    - checks and reserves every applicable budget (`RESERVED`);
-   - creates an `execution_id` (the idempotency key) and sets the action to `EXECUTING`;
-   - inserts the corresponding audit events.
+   - records the intent (step 6a).
 
    If any step fails, the transaction rolls back and nothing is executed.
-5. **Call the Tools service** with the executor token, `Idempotency-Key: execution_id` and `If-Match: resource_version`. The Tools service checks the precondition and records the execution in one transaction; a repeated key returns the stored result without executing again.
-6. **Outcome**:
-   - success ⇒ `COMMITTED`, budget committed;
-   - explicit failure with a confirmed non-execution ⇒ `FAILED`, budget released;
-   - timeout or lost response ⇒ `UNKNOWN`, budget held.
+6. **Internal execution path**, shared by `ALLOW` and approved actions:
+   - a. **Record the intent**: in a Gateway transaction, create an `execution_id` (the idempotency key), set the action to `EXECUTING` and insert the corresponding audit events.
+   - b. **Call the Tools service** with the executor token, `Idempotency-Key: execution_id` and `If-Match: resource_version`. The Tools service checks the precondition and records the execution in one transaction; a repeated key returns the stored result without executing again.
+   - c. **Record the outcome** in a second Gateway transaction:
+     - success ⇒ `COMMITTED`, budget committed;
+     - explicit failure with a confirmed non-execution ⇒ `FAILED`, budget released;
+     - timeout or lost response ⇒ `UNKNOWN`, budget held.
+
+   There is no atomic transaction across the Gateway database and the Tools service. The guarantee comes from the order (intent recorded before the call, outcome after it), from the idempotency key enforced by the Tools service, and from keeping `UNKNOWN` until reconciliation.
 7. **Reconcile** `UNKNOWN` (and any `EXECUTING` found at Gateway start-up) by querying `GET /executions/{execution_id}` on the Tools service.
 
 An approval is never restored after consumption. Any retry requires a new approval.

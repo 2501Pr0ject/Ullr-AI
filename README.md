@@ -134,9 +134,11 @@ Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is giv
 
 **Signed decisions (planned, M2).** The approver signs, with Ed25519, a domain-separation prefix followed by the canonical JSON of the full decision payload. The Gateway looks the key up in its registry, never in the payload, and rejects a decision in which any field differs from the stored record.
 
-**Execution and idempotency (planned, M2).** Execution resends the arguments. In one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. It then calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
+**Execution and idempotency (planned, M1–M2).** Allowed actions execute within the proposing request. Approved actions are executed by a second call that resends the arguments: in one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. Both then follow the same path. There is no transaction spanning the Gateway and the Tools service: the Gateway records the intent, calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. The Gateway then records the outcome. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
 
 **Budgets (planned, M2).** Cumulative caps per account, shared by all agents, and per agent, checked and reserved inside the execution transaction.
+
+**Sessions (planned, M1).** Sessions are created by a trusted party through an admin-only endpoint; the agent token is bound to one session and the agent API cannot create or switch sessions. This closes provenance laundering through a fresh session.
 
 **Provenance (planned, M1–M2).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
 
@@ -235,6 +237,8 @@ Ullr's evaluation is prototype-scale and its implementation is incomplete (see [
 - Tools and approvers are simulated. The effect of showing provenance to a person is not measured.
 - One model, possibly two; model nondeterminism is only partly controlled.
 - Session-level provenance over-approximates. Its cost shows up as lower task success and more escalations.
+- Provenance assumes that a new session starts with a fresh agent context. If the agent carries memory across sessions (conversation history, persistent memory, retrieval over past outputs), injected content can reach a clean session without the Gateway observing it.
+- A refund approval is bound to the account's version. Any other refund on that account changes the version and makes pending approvals for it stale; they must be requested again.
 - Strict text rules reject some legitimate input: tabs, emoji sequences joined by zero-width characters, and scripts that use the zero-width non-joiner.
 - The guarantees rest on container isolation and on the Tools service enforcing idempotency and preconditions. A real deployment would have to establish both for its own backends.
 

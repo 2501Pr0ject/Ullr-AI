@@ -32,12 +32,13 @@ Protected actions in the reference environment (all simulated):
 
 | Principal | Authentication | Privileges |
 |---|---|---|
-| Agent | Bearer token issued per agent, mapped to `agent_id` by the Gateway | Propose actions, request execution of its own actions. Nothing else. |
+| Agent | Bearer token issued per session by the session issuer, mapped by the Gateway to exactly one `session_id` and one `agent_id` | Propose actions, request execution of its own actions, in its own session. Nothing else. |
+| Session issuer (benchmark controller, or an orchestrator in production) | Separate admin token, on a network the agent is not attached to | Create sessions and obtain their agent tokens |
 | Approver | Ed25519 key pair; the Gateway holds a registry `approver_id → public key` | Sign decisions on pending approvals |
 | Gateway | Executor token toward the Tools service | Execute actions, query execution status |
 | Benchmark controller | Separate admin token, separate network | Reset and snapshot the Tools service; never present during an episode's agent loop |
 
-Identity is never taken from a request payload: `agent_id` comes from the token, `approver_id` is only valid if its signature verifies against the registered key. ADV3 can steal the agent token; this grants nothing beyond the agent's own (unprivileged) rights.
+Identity is never taken from a request payload: `agent_id` and `session_id` come from the token, `approver_id` is only valid if its signature verifies against the registered key. ADV3 can steal the agent token; this grants nothing beyond the agent's own (unprivileged) rights.
 
 ## 4. Adversaries
 
@@ -70,11 +71,12 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 ## 6. Assumptions
 
 - **H1** Container isolation holds under the documented hardening (non-root, `cap_drop: ALL`, `no-new-privileges`, read-only root filesystem, no Docker socket, no shared default network, no published Tools ports).
-- **H2** Approver private keys, the executor credential and the admin token are never mounted into or reachable from the agent container.
+- **H2** Approver private keys, the executor credential, the admin token and the session-creation credential are never mounted into or reachable from the agent container.
 - **H3** The Gateway clock is trustworthy; expiry is evaluated on the Gateway only.
 - **H4** The policy file is reviewed and correct; the system enforces the policy, it does not judge it.
 - **H5** Trust labels on resources (internal vs external origin) are assigned by the Tools service, not by the agent.
 - **H6** The Tools service itself enforces the executor token, idempotency keys and resource-version preconditions. It does not rely on the Gateway for these.
+- **H7** A new session is issued only with a fresh agent context. If the agent carries memory across sessions (conversation history, persistent memory, retrieval over past outputs), injected content can cross into a clean session, and the Gateway cannot observe it.
 
 ## 7. Threats and mitigations
 
@@ -91,7 +93,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 | T9 | Unknown tool, alias or case variant of a protected tool | ADV3 | Exact allow-list of canonical tool names | L1, L2 |
 | T10 | Malformed or ambiguous arguments (extra fields, duplicate keys, floats, path syntax, Unicode variants) | ADV2, ADV3 | Strict per-tool formats; values not provably equivalent to a canonical form are rejected, never normalized by guess | L1, L2 |
 | T11 | Injected instruction produces a plausible approval request that a human accepts | ADV1 | Gateway-derived provenance shown in the approval request; policy escalation for tainted sessions | L3 |
-| T12 | Agent forges or launders provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored | L1 |
+| T12 | Agent forges or launders provenance. Laundering scenario: the agent reads injected content in session A, then proposes the R2 action from a clean session B, so that the approver sees clean provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored. Sessions are created only by a trusted party through an admin-only endpoint; an agent token is bound to exactly one session; the agent API cannot create or switch sessions, nor reset provenance | L1 |
 | T13 | Gateway error, approval timeout or tool timeout leads to execution | ADV2, ADV3 | Fail closed on every error path | L1 |
 | T14 | Concurrent executions consume one approval twice | ADV3 | Serialized consumption transaction + Tools-side idempotency | L2 |
 | T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the security state transition; append-only triggers; hash chain with verification. Truncation detection and external anchoring are deferred | L1 |
@@ -119,4 +121,5 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 - Provenance covers only sources observed through the Gateway, at session granularity: it over-taints and cannot attribute a specific argument to a specific source.
 - Exactly-once execution is not promised for arbitrary external systems; at-most-once holds only where the downstream service enforces idempotency.
 - R0 reads can still disclose what the agent is allowed to read.
+- Injected content carried across sessions by the agent's own memory is not observed by the Gateway (H7): a session issued to an agent that kept its context can be clean on record and tainted in fact.
 - Truncation of the audit log is not detected: the chain head is not anchored outside the Gateway (deferred).
