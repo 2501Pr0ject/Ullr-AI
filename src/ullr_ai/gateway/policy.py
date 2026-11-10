@@ -112,6 +112,15 @@ class _UniqueKeyLoader(yaml.SafeLoader):
         return super().construct_mapping(node, deep)
 
 
+def load_yaml_strict(raw: bytes) -> Any:
+    """Parse UTF-8 YAML with safe construction only and duplicate keys rejected."""
+    try:
+        # A SafeLoader subclass: no arbitrary object construction.
+        return yaml.load(raw.decode("utf-8", errors="strict"), Loader=_UniqueKeyLoader)  # noqa: S506
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError(str(exc)) from None
+
+
 def load_policy(path: Path | str) -> LoadedPolicy:
     """Load and validate the policy file. The hash covers the raw file bytes."""
     try:
@@ -119,9 +128,8 @@ def load_policy(path: Path | str) -> LoadedPolicy:
     except OSError:
         raise PolicyError("policy file cannot be read") from None
     try:
-        # A SafeLoader subclass: no arbitrary object construction.
-        data = yaml.load(raw.decode("utf-8", errors="strict"), Loader=_UniqueKeyLoader)  # noqa: S506
-    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        data = load_yaml_strict(raw)
+    except ValueError as exc:
         raise PolicyError(f"policy file is not valid YAML: {exc}") from None
     try:
         policy = Policy.model_validate(data)

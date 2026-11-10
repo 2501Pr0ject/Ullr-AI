@@ -1,5 +1,6 @@
 """Shared fixtures: an in-process Tools service and Gateway wired together."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ullr_ai import storage
-from ullr_ai.gateway.app import Gateway, create_agent_app
+from ullr_ai.gateway import signing
+from ullr_ai.gateway.app import Gateway, create_agent_app, create_approver_app
 from ullr_ai.gateway.app import create_admin_app as create_gateway_admin_app
 from ullr_ai.gateway.canon import parse_json_strict
 from ullr_ai.gateway.executor_client import ExecutorClient
@@ -18,6 +20,12 @@ from ullr_ai.tools_service.state import Seed, ToolsState
 EXECUTOR_TOKEN = "executor-token-for-tests"  # noqa: S105
 TOOLS_ADMIN_TOKEN = "tools-admin-token-for-tests"  # noqa: S105
 GATEWAY_ADMIN_TOKEN = "gateway-admin-token-for-tests"  # noqa: S105
+APPROVER_TOKEN = "approver-channel-token-for-tests"  # noqa: S105
+
+# One registered approver and one key that is registered nowhere.
+APPROVER_PRIVATE, APPROVER_PUBLIC = signing.generate_keypair()
+OUTSIDER_PRIVATE, OUTSIDER_PUBLIC = signing.generate_keypair()
+APPROVERS = {"human_1": APPROVER_PUBLIC}
 
 DEFAULT_POLICY = Path(__file__).resolve().parents[1] / "policies" / "default.yaml"
 
@@ -88,7 +96,9 @@ def make_env(tmp_path, tools):
     injection); ``policy_text`` replaces the default policy.
     """
 
-    def build(*, tools_http=None, policy_text=None, max_body_bytes=None):
+    def build(
+        *, tools_http=None, policy_text=None, max_body_bytes=None, clock=None, approvers=None
+    ):
         policy_path = DEFAULT_POLICY
         if policy_text is not None:
             policy_path = tmp_path / "policy.yaml"
@@ -98,6 +108,9 @@ def make_env(tmp_path, tools):
             policy=load_policy(policy_path),
             tools=ExecutorClient(tools_http or tools.executor, EXECUTOR_TOKEN),
             admin_token=GATEWAY_ADMIN_TOKEN,
+            approver_token=APPROVER_TOKEN,
+            approvers=APPROVERS if approvers is None else approvers,
+            **({} if clock is None else {"clock": clock}),
         )
         limits = {} if max_body_bytes is None else {"max_body_bytes": max_body_bytes}
         return SimpleNamespace(
@@ -105,6 +118,7 @@ def make_env(tmp_path, tools):
             tools=tools,
             agent=TestClient(create_agent_app(gateway, **limits), base_url="http://gateway"),
             admin=TestClient(create_gateway_admin_app(gateway), base_url="http://gateway-admin"),
+            approver=TestClient(create_approver_app(gateway), base_url="http://gateway-approver"),
         )
 
     return build
@@ -155,3 +169,75 @@ def provenance_of(env, session_id):
         (session_id,),
     )
     return version, [source["source_id"] for source in sources]
+
+
+class FakeClock:
+    """A Gateway clock that tests move by hand."""
+
+    def __init__(self):
+        self.now = datetime(2026, 11, 11, 10, 0, 0, tzinfo=UTC)
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, **delta):
+        self.now += timedelta(**delta)
+
+
+def pending_requests(env):
+    response = env.approver.get("/v1/approvals", headers=bearer(APPROVER_TOKEN))
+    assert response.status_code == 200
+    return response.json()["pending"]
+
+
+def request_for(env, action_id):
+    """The signable request of one pending action, as shown to the approver."""
+    matches = [v for v in pending_requests(env) if v["request"]["action_id"] == action_id]
+    assert len(matches) == 1
+    return matches[0]["request"]
+
+
+def signed_decision(
+    request, *, decision="APPROVE", approver_id="human_1", private=APPROVER_PRIVATE, **overrides
+):
+    """Build ``{payload, signature}``. ``overrides`` change payload fields before signing."""
+    fields = {
+        **request,
+        "decision": decision,
+        "approver_id": approver_id,
+        "issued_at": "2026-11-11T10:00:00.000000Z",
+        **overrides,
+    }
+    payload = signing.parse_payload(fields)
+    return {
+        "payload": payload.model_dump(),
+        "signature": signing.sign(signing.load_private_key(private), payload),
+    }
+
+
+def submit(env, action_id, body):
+    return env.approver.post(f"/v1/approvals/{action_id}/decision", json=body)
+
+
+def approve(env, action_id, **kwargs):
+    response = submit(env, action_id, signed_decision(request_for(env, action_id), **kwargs))
+    assert response.status_code == 200, response.text
+    return response
+
+
+def execute(env, headers, action_id, tool, resource_id=None, args=None):
+    body = {"tool": tool, "resource_id": resource_id, "args": args or {}}
+    return env.agent.post(f"/v1/actions/{action_id}/execute", json=body, headers=headers)
+
+
+def approved(env, headers, tool, resource_id=None, args=None):
+    """Propose an action that needs approval and approve it. Returns its action id."""
+    response = propose(env, headers, tool, resource_id, args)
+    assert response.status_code == 202, response.text
+    action_id = response.json()["action_id"]
+    approve(env, action_id)
+    return action_id
+
+
+def status_of(env, action_id):
+    return rows(env, "SELECT status FROM actions WHERE action_id = ?", (action_id,))[0]["status"]
