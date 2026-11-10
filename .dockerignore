@@ -1,0 +1,9 @@
+*
+!pyproject.toml
+!uv.lock
+!LICENSE
+!src
+!policies
+!attacks
+**/__pycache__
+**/.DS_Store

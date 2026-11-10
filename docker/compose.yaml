@@ -1,0 +1,138 @@
+# Protected stack. Topology by authorized clients: see docs/ARCHITECTURE.md section 3.
+#
+# - No port is published on the host and no service uses a default network.
+# - Every network is internal (no route out) except net_egress, which only the
+#   LLM relay joins.
+# - Each service receives only the secrets of its role, as read-only files.
+# - No container mounts the Docker socket.
+name: ullr
+
+x-service: &service
+  image: ullr-ai:local
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+  pids_limit: 512
+  restart: "no"
+
+x-idle: &idle
+  entrypoint: ["python", "-c", "import signal; signal.pause()"]
+
+x-gateway-env: &gateway-env
+  ULLR_GATEWAY_DB: /data/gateway/gateway.db
+  ULLR_POLICY: /app/policies/default.yaml
+  ULLR_APPROVERS: /run/config/approvers.yaml
+
+services:
+  # --- untrusted -------------------------------------------------------------
+  agent: &agent
+    <<: [*service, *idle]
+    volumes: ["episode_1:/run/episode:ro"]
+    networks: [net_agent, net_llm]
+  agent-2:
+    <<: *agent
+    volumes: ["episode_2:/run/episode:ro"]
+  agent-3:
+    <<: *agent
+    volumes: ["episode_3:/run/episode:ro"]
+
+  # --- Gateway: three processes, three networks ------------------------------
+  gateway-api:
+    <<: *service
+    environment:
+      <<: *gateway-env
+      ULLR_ROLE: gateway-api
+      ULLR_TOOLS_URL: http://tools-executor:8000
+      ULLR_RECONCILE_INTERVAL: "2"
+    secrets: [executor_token]
+    volumes:
+      - gateway_db:/data/gateway
+      - ../secrets/approvers.yaml:/run/config/approvers.yaml:ro
+    networks:
+      net_agent: {ipv4_address: 172.30.0.2}
+      net_tools: {}
+  gateway-admin:
+    <<: *service
+    environment:
+      <<: *gateway-env
+      ULLR_ROLE: gateway-admin
+    secrets: [gateway_admin_token]
+    volumes: ["gateway_db:/data/gateway"]
+    networks: [net_admin]
+  gateway-approver:
+    <<: *service
+    environment:
+      <<: *gateway-env
+      ULLR_ROLE: gateway-approver
+    secrets: [approver_channel_token]
+    volumes:
+      - gateway_db:/data/gateway
+      - ../secrets/approvers.yaml:/run/config/approvers.yaml:ro
+    networks: [net_approval]
+
+  # --- Tools service: two processes, two networks -----------------------------
+  tools-executor:
+    <<: *service
+    environment: {ULLR_ROLE: tools-executor, ULLR_TOOLS_DB: /data/tools/tools.db}
+    secrets: [executor_token]
+    volumes: ["tools_state:/data/tools"]
+    networks: [net_tools]
+  tools-admin:
+    <<: *service
+    environment: {ULLR_ROLE: tools-admin, ULLR_TOOLS_DB: /data/tools/tools.db}
+    secrets: [tools_admin_token]
+    volumes: ["tools_state:/data/tools"]
+    networks: [net_control]
+
+  # --- trusted operators -----------------------------------------------------
+  approver:
+    <<: [*service, *idle]
+    secrets: [approver_private_key, approver_channel_token]
+    networks: [net_approval]
+  controller:
+    <<: [*service, *idle]
+    secrets: [tools_admin_token, gateway_admin_token]
+    volumes:
+      - episode_1:/episodes/1
+      - episode_2:/episodes/2
+      - episode_3:/episodes/3
+    networks: [net_admin, net_control]
+
+  # --- the only container with a route out ----------------------------------
+  llm-relay:
+    <<: *service
+    environment:
+      ULLR_ROLE: llm-relay
+      ULLR_OLLAMA_URL: http://host.docker.internal:11434
+      ULLR_ALLOWED_MODELS: "qwen3:8b"
+    networks:
+      net_llm: {ipv4_address: 172.30.0.18}
+      net_egress: {}
+
+secrets:
+  executor_token: {file: ../secrets/executor_token}
+  tools_admin_token: {file: ../secrets/tools_admin_token}
+  gateway_admin_token: {file: ../secrets/gateway_admin_token}
+  approver_channel_token: {file: ../secrets/approver_channel_token}
+  approver_private_key: {file: ../secrets/approver_private_key}
+
+volumes:
+  gateway_db:
+  tools_state:
+  episode_1:
+  episode_2:
+  episode_3:
+
+networks:
+  net_agent: {internal: true, ipam: {config: [{subnet: 172.30.0.0/28}]}}
+  net_llm: {internal: true, ipam: {config: [{subnet: 172.30.0.16/28}]}}
+  net_tools: {internal: true, ipam: {config: [{subnet: 172.30.0.32/28}]}}
+  net_approval: {internal: true, ipam: {config: [{subnet: 172.30.0.48/28}]}}
+  net_admin: {internal: true, ipam: {config: [{subnet: 172.30.0.64/28}]}}
+  net_control: {internal: true, ipam: {config: [{subnet: 172.30.0.80/28}]}}
+  net_egress: {ipam: {config: [{subnet: 172.30.0.96/28}]}}
