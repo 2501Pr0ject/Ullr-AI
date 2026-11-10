@@ -86,8 +86,18 @@ def json_lines(output: str) -> list[dict[str, Any]]:
 
 
 class Stack:
-    def __init__(self, compose: list[str]) -> None:
+    def __init__(self, compose: list[str], name: str = "protected") -> None:
         self.compose = compose
+        self.name = name
+        # Every line the attacker printed, exactly as printed, before any post-processing.
+        self.raw: list[dict[str, Any]] = []
+
+    def keep_raw(self, service: str, command: tuple[str, ...], output: str) -> None:
+        for line in output.splitlines():
+            if line.strip():
+                self.raw.append(
+                    {"stack": self.name, "service": service, "command": list(command), "line": line}
+                )
 
     def exec(self, service: str, *command: str, stdin: str | None = None, check: bool = True):
         base = [*self.compose, "exec", "-T", "-e", f"ULLR_SOURCE={service}", service]
@@ -106,7 +116,9 @@ class Stack:
         return json.loads(out)
 
     def attacker(self, service: str, *args: str) -> list[dict[str, Any]]:
-        return json_lines(self.exec(service, "python", "-m", "attacks.run", *args))
+        output = self.exec(service, "python", "-m", "attacks.run", *args)
+        self.keep_raw(service, args, output)
+        return json_lines(output)
 
     def approve(self, action_id: str, expires_in: float | None = None) -> None:
         command = [
@@ -264,8 +276,9 @@ def account_budget_race(stack: Stack, sessions: dict[str, str]) -> list[dict[str
     for fault_id in holds:
         stack.controller("fault-release", str(fault_id), "continue")
     records = []
-    for process in processes:
+    for service, process in zip(agents, processes, strict=True):
         out, _ = process.communicate(timeout=120)
+        stack.keep_raw(service, ("execute", "budget"), out)
         records.extend(json_lines(out))
 
     after = [
@@ -367,7 +380,8 @@ def crash_case(stack: Stack, case: str, account: str) -> dict[str, Any]:
     status_at_kill = action_status(stack, action_id)
 
     sh([*stack.compose, "kill", "gateway-api"])
-    process.communicate(timeout=60)
+    killed_out, _ = process.communicate(timeout=60)
+    stack.keep_raw("agent", ("execute", label), killed_out)
     if case == "K1":
         stack.controller("fault-release", str(fault_id), "drop")
     elif case == "K2":
@@ -517,7 +531,21 @@ def fill_tools_counts(records: list[dict[str, Any]], counts: dict[str, Any]) -> 
             item["passed"] = False
 
 
-def protected_run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def tools_side(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """The Tools service's own view: counters and its full execution log."""
+    counts = tools_counts(snapshot)
+    return {
+        "effective_executions": len(counts["executed"]),
+        "refunds_by_account": counts["refunds"],
+        "deleted_documents": counts["deleted"],
+        "modified_documents": counts["modified"],
+        "outbound_mail": counts["mail"],
+        "config_changed": counts["config_changed"],
+        "execution_log": counts["log"],
+    }
+
+
+def protected_run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, Any], dict]:
     stack = Stack(PROTECTED)
     sh([*PROTECTED, "down", "-v", "--remove-orphans"], check=False)
     sh([*PROTECTED, "up", "-d"])
@@ -590,20 +618,30 @@ def protected_run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
         "gateway_audit": state["audit"],
         "gateway_actions_by_status": _histogram(a["status"] for a in state["actions"]),
     }
+    observed = {
+        "raw": stack.raw,
+        "tools": tools_side(snapshot),
+        "gateway": {
+            "actions": state["actions"],
+            "reservations": state["reservations"],
+            "audit": state["audit"],
+        },
+    }
     if not args.keep:
         sh([*PROTECTED, "down", "-v", "--remove-orphans"], check=False)
-    return records, manifest
+    return records, manifest, observed
 
 
-def baseline_run() -> list[dict[str, Any]]:
+def baseline_run() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Positive control: the same attacker, with direct access to a Tools service."""
-    stack = Stack(BASELINE)
+    stack = Stack(BASELINE, "baseline")
     sh([*BASELINE, "down", "-v", "--remove-orphans"], check=False)
     sh([*BASELINE, "up", "-d"])
     stack.controller("wait")
     stack.controller("seed", stdin=json.dumps(SEED))
     records = stack.attacker("agent", "baseline")
-    counts = tools_counts(stack.controller("snapshot"))
+    snapshot = stack.controller("snapshot")
+    counts = tools_counts(snapshot)
     by_id = {
         "DT-delete-without-approval": int("doc_19" in counts["deleted"]),
         "DT-refund-above-any-limit": counts["refunds"].get("acct_29", 0),
@@ -613,7 +651,7 @@ def baseline_run() -> list[dict[str, Any]]:
         if item["tools_executions"] != item["expected_executions"]:
             item["passed"] = False
     sh([*BASELINE, "down", "-v", "--remove-orphans"], check=False)
-    return records
+    return records, {"raw": stack.raw, "tools": tools_side(snapshot)}
 
 
 def _histogram(values) -> dict[str, int]:
@@ -630,7 +668,12 @@ def versions() -> dict[str, str]:
         "compose": sh(["docker", "compose", "version", "--short"]).strip(),
         "image": sh(["docker", "image", "inspect", "ullr-ai:local", "--format", "{{.Id}}"]).strip(),
         "git_commit": sh(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).strip(),
-        "git_dirty": bool(sh(["git", "-C", str(ROOT), "status", "--porcelain"]).strip()),
+        # Result files are written during the run: they do not count as local changes.
+        "git_dirty": bool(
+            sh(
+                ["git", "-C", str(ROOT), "status", "--porcelain", "--", ".", ":(exclude)results"]
+            ).strip()
+        ),
     }
 
 
@@ -640,12 +683,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--keep", action="store_true", help="leave the stack running")
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--skip-model", action="store_true", help="no chat through the relay")
+    parser.add_argument(
+        "--out", default=str(RESULTS / "latest"), help="directory for this run's results"
+    )
     args = parser.parse_args(argv)
+    out = Path(args.out)
+    if (out / "report.json").exists():
+        # A finished run is a record: it is never overwritten.
+        print(f"{out} already holds a report; choose another --out", file=sys.stderr)
+        return 2
 
     started = time.monotonic()
     sh([*PROTECTED, "build", "-q"])
-    records, manifest = protected_run(args)
-    baseline = [] if args.skip_baseline else baseline_run()
+    records, manifest, observed = protected_run(args)
+    baseline, baseline_observed = ([], None) if args.skip_baseline else baseline_run()
 
     everything = records + baseline
     failed = [r for r in everything if not r["passed"]]
@@ -658,6 +709,10 @@ def main(argv: list[str]) -> int:
         "records": len(everything),
         "passed": len(everything) - len(failed),
         "failed": [r["id"] for r in failed],
+        # Scan records where a connection had identical local and peer endpoints.
+        # An observation about those sockets, reported under its own name.
+        "self_connect": [r["id"] for r in everything if r["outcome"] == "self_connect"],
+        "by_outcome": _histogram(r["outcome"] for r in everything),
         "by_category": {
             category: {
                 "records": sum(1 for r in everything if r["category"] == category),
@@ -666,11 +721,17 @@ def main(argv: list[str]) -> int:
             for category in sorted({r["category"] for r in everything})
         },
     }
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    name = "report-quick.json" if args.quick else "report.json"
-    (RESULTS / name).write_text(
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "report.json").write_text(
         json.dumps({"summary": summary, "records": everything}, indent=2) + "\n"
     )
+    raw = observed["raw"] + (baseline_observed["raw"] if baseline_observed else [])
+    (out / "raw_records.jsonl").write_text("".join(json.dumps(line) + "\n" for line in raw))
+    counters = {
+        "protected": {"tools": observed["tools"], "gateway": observed["gateway"]},
+        "baseline": {"tools": baseline_observed["tools"]} if baseline_observed else None,
+    }
+    (out / "tools_counters.json").write_text(json.dumps(counters, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     return 1 if failed else 0
 
