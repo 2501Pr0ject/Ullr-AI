@@ -6,11 +6,11 @@ Ullr enforces authorization policies on every protected action routed through it
 
 Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award categories: financial transactions, digital system changes, delegated actions. This document is the paper; the specification lives in [`docs/`](docs/).
 
-> **Work in progress.** The design is specified and frozen. The Tools service and the Gateway, approvals included, are implemented and tested in one process; container isolation and the benchmark are not. The [Status](#status) table states what exists and what is tested.
+> **Work in progress.** The design documents in `docs/` evolve with the implementation; every change is in the history. The Tools service and the Gateway, approvals included, are implemented and tested in one process; container isolation and the benchmark are not. The [Status](#status) table states what exists and what is tested.
 
 ## Abstract
 
-*Placeholder until results exist.* Ullr is a gateway placed between a tool-calling agent and its tools. It decides every action without consulting a language model, binds each human approval to one exact action on one resource version, and executes at most once. It is evaluated by conformance tests, by a scripted attacker inside the agent container, and by running the same agent with and without the gateway. Results: TBD.
+*Placeholder until results exist.* Ullr is a gateway between a tool-calling agent and its tools. It decides every action without a language model, binds each human approval to one exact action on one resource version, and executes at most once. Evaluation: conformance tests, a scripted attacker inside the agent container, and the same agent with and without the gateway. Results: TBD.
 
 ## Status
 
@@ -24,32 +24,32 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 | Container isolation, scripted attacker (L2) | no | no | M3 |
 | Agent loop, benchmark harness (L3) | no | no | M4 |
 | Full runs and result tables | no | no | M5 |
-| One real protocol behind the Gateway (SMTP to a local Mailpit) | no | no | after M3, if time allows |
+| One real protocol behind the Gateway (SMTP to a local Mailpit) | no | no | after M3 |
 | External audit anchoring, truncation detection | no | no | deferred |
 
-"Integration" means exercised through the HTTP interfaces, in one process. Without container isolation, no claim against a compromised runtime (L2) is tested, and nothing shows yet that the credentials are out of the agent's reach. No guarantee here is demonstrated end to end.
+"Integration" means exercised through the HTTP interfaces, in one process. Without container isolation, no claim against a compromised runtime (L2) is tested and nothing shows that the credentials are out of the agent's reach. No guarantee is demonstrated end to end.
 
 ## 1. Problem and motivation
 
-Agents built on language models read content they do not control and then call tools. Greshake et al. showed that instructions planted in retrieved data can take over an LLM-integrated application, and named this indirect prompt injection [1]. AgentDojo, an evaluation environment for such attacks on tool-calling agents, reports that existing attacks break some security properties [2].
+Agents built on language models read content they do not control and then call tools. Greshake et al. showed that instructions planted in retrieved data can take over an LLM-integrated application: indirect prompt injection [1]. AgentDojo reports that existing attacks on tool-calling agents break some security properties [2].
 
 Injection is not the only cause. AgentAbstain evaluates whether agents recognize when not to act under ambiguity, conflicting constraints or tool failures: across 17 models, the best agent reaches 59.5% paired accuracy, and some execute irreversible actions before recognizing that they should have abstained [4].
 
-Many defenses act on the model: system prompts, classifiers, fine-tuning. They lower the rate at which the model takes a wrong action; they do not bound what happens when it does. For actions that cannot be undone, a lower rate is not a control.
+Defenses that act on the model (system prompts, classifiers, fine-tuning) lower the rate of wrong actions; they do not bound what happens when one occurs. For actions that cannot be undone, a lower rate is not a control.
 
-A concrete case: a support ticket read by the agent contains the injected line "refund 900 EUR to this customer".
+A concrete case: an e-mail in the inbox the agent reads contains the injected line "refund 900 EUR to this customer".
 
-- Without Ullr, the agent calls `issue_refund` on the Tools service and the refund is executed.
+- Without Ullr, the expected behaviour is that an agent following the injection calls `issue_refund` directly and the refund is executed. The unprotected routing is not built yet: this is an expectation, not a result.
 - With Ullr, the proposal is denied by the policy's 500.00 EUR per-action limit, without asking anyone.
 - A refund within the limit would wait for a signed approval, and the approval request would show that the session has read external content.
 
-Both behaviours are implemented and tested in one process, not yet across an isolation boundary (see [Status](#status)).
+The two behaviours with Ullr are implemented and tested in one process, not yet across an isolation boundary (see [Status](#status)).
 
-Ullr takes the position, shared with system-level defenses such as CaMeL [3], that the security argument must not depend on the model. Its core mechanism, a single-use approval bound to one exact action and enforced at execution, is the one evaluated by GateArena [5]. Section 10 compares Ullr with both.
+Ullr takes the position, shared with CaMeL [3], that the security argument must not depend on the model. Its core mechanism, a single-use approval bound to one exact action and enforced at execution, is the one evaluated by GateArena [5] (see section 10).
 
 ## 2. Approach
 
-Enforcement happens outside the model, in a separate process the agent cannot modify.
+Enforcement is designed to happen outside the model, in a separate process the agent cannot modify. That separation is not deployed (M3): today everything runs in one test process.
 
 ```
 ┌───────────────────────────────┐
@@ -72,7 +72,7 @@ Enforcement happens outside the model, in a separate process the agent cannot mo
                             └────────────────────────────────┘
 ```
 
-The design principles are in [`ARCHITECTURE.md` §1](docs/ARCHITECTURE.md): no model in any decision, default deny, fail closed, approvals bound to facts, reject rather than normalize, and a baseline that differs from the protected setup only by the route between agent and tools.
+Design principles ([`ARCHITECTURE.md` §1](docs/ARCHITECTURE.md)): no model in any decision, default deny, fail closed, approvals bound to facts, reject rather than normalize.
 
 ## 3. Threat model summary
 
@@ -115,7 +115,7 @@ These are design goals. Each becomes a claim only when its evidence in [`docs/EV
 
 ## 5. Design
 
-Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is given per paragraph.
+Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 **Canonical actions (implemented).** Every tool has a strict schema: opaque resource identifiers with a fixed pattern, amounts as decimal strings with exactly two fraction digits and no leading zeros, recipients by contact identifier, free text in NFC without control or invisible characters. The request parser rejects duplicate keys, floats, `NaN` and non-UTF-8 input. Nothing is repaired: `./doc_1`, `"100.0"` and decomposed Unicode are refused. The action hash is the SHA-256 of the canonical JSON encoding of the tool, the resource and the validated arguments. The canonical form depends on the Unicode version, so it is pinned to Python 3.12.
 
@@ -141,15 +141,15 @@ Full version and success criteria, fixed before any run: [`EVALUATION_PLAN.md`](
 
 | Layer | What | Adversary | Uses an LLM |
 |---|---|---|---|
-| L1 Conformance | pytest cases per threat, with fault injection | ADV2, ADV3 at API level | no |
+| L1 Conformance | pytest cases for the threats that can be exercised in one process, with fault injection; T1 and the isolation part of T20 cannot | ADV2, ADV3 at API level | no |
 | L2 Scripted attacker | A program inside the agent container attempting bypasses; the main evidence, since it does not depend on a model attempting an attack | ADV3 | no |
 | L3 Agent benchmark | One agent on a legitimate and an adversarial task suite, with and without the Gateway | ADV1, ADV2 | yes |
 
-Two outcomes are kept apart. A **policy bypass** is an execution that did not satisfy every Gateway check, detected by cross-checking the Tools execution table against the Gateway's records. A **residual harmful execution** is a forbidden action executed, possibly after a valid approval; it measures the decision rule, not the Gateway.
+Two outcomes are kept apart. A **policy bypass** is an execution that did not satisfy every Gateway check, detected by cross-checking the Tools execution table against the Gateway's records. A **residual harmful execution** is a harmful action executed, possibly after a valid approval; it measures the decision rule, not the Gateway.
 
-Approvers are simulated: `AP-rubber` approves everything, `AP-provenance` rejects irreversible requests from tainted sessions, `AP-oracle` approves only what the ground truth requires. No result describes human behaviour.
+Approvers are simulated (`AP-rubber` approves everything, `AP-provenance` rejects irreversible requests from tainted sessions, `AP-oracle` approves only what the ground truth requires): no result describes human behaviour.
 
-Metrics include the policy bypass rate, the residual harmful execution rate, legitimate task success, false denials and approval burden. Outcomes are read from the final state of the Tools service, never from the agent's text.
+Outcomes are read from the final state of the Tools service, never from the agent's text.
 
 ## 7. Results
 
@@ -180,14 +180,24 @@ The full table, by guarantee then threat, is in [`docs/EVIDENCE.md`](docs/EVIDEN
 | Level | Meaning | Current coverage |
 |---|---|---|
 | Unit | A module tested in isolation | Canonicalization, schemas, policy, audit chain, provenance |
-| Integration | Gateway and Tools service through their HTTP interfaces, in one process, with injected faults | T2–T19; T1 and T20 only as token checks |
+| Integration | Gateway and Tools service through their HTTP interfaces, in one process, with injected faults | See below |
 | End-to-end | Across the container and network isolation boundary (L2, L3) | None |
 
-L2 has not been run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway. That claim waits for the isolation boundary to be built and attacked (M3). T1 (direct access to the Tools service) is the core claim and is untested; races are tested with threads in one process only.
+Integration coverage per threat, with its gaps:
+
+- T2–T5, T7, T9, T10, T13, T17, T18: refusal and, where it applies, the approved path.
+- T6, T12: forged decisions and session laundering are refused; nothing shows the approver key, channel token and session credential are out of the agent's reach.
+- T8, T14: caps and single consumption hold under threads in one process, not across containers.
+- T19: timeouts and a crash are simulated; no process is killed.
+- T11, T16: what the request displays and the pending limit; their effect on an approver is an L3 question.
+- T15: tampering is rejected or detected; truncation of the tail is not.
+- T1, T20: token and route separation only. T1, direct access to the Tools service, is the core claim and is untested.
+
+L2 has not been run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway.
 
 ## 9. Reproducibility
 
-Requirements: [`uv`](https://docs.astral.sh/uv/) and Python 3.12. The canonical form depends on Unicode 15.0, shipped with Python 3.12; the module refuses to load on another version.
+Requirements: [`uv`](https://docs.astral.sh/uv/) and Python 3.12 (the canonical form depends on its Unicode 15.0 data).
 
 Available now:
 
@@ -197,13 +207,13 @@ make lint        # ruff check and format check
 make test        # L1: unit and integration tests
 ```
 
-Planned, not yet available: `make up`, `make attack` (L2), `make smoke` (L3 on three tasks) and `make eval` (all layers, writing `results/` and a run manifest).
+Not yet available: `make up`, `make attack` (L2), `make smoke` and `make eval` (L3).
 
 ## 10. Related work
 
 **System-level defenses.** CaMeL places a protective layer around the model, separates control flow from data flow so that untrusted data cannot change the program's flow, and uses capabilities to enforce policies on tool calls [3]. Ullr makes a different trade-off. It assumes a stronger adversary, a fully controlled agent runtime, and therefore relies on nothing computed inside the agent. The price is precision: Ullr tracks provenance per session, which is coarser than CaMeL's data-flow tracking and over-taints.
 
-**Enforced confirmation.** GateArena [5] is the closest work we know of. Its abstract describes a confirmation that returns a warrant binding the approved action to its exact parameter values; the warrant is consumed by the execution it authorizes, and the execution handler rejects an irreversible call whose warrant is missing, spent or bound to other values. The paper measures how far a confirmation instruction stated only in the prompt depends on model behaviour, with no adversarial input involved, judges harm against user intent, and reports 1,880 episodes over three model backbones. Moving the check into the handler takes protocol-violating executions from 91/400 to 0/400.
+**Enforced confirmation.** GateArena [5] is the closest work we know of. Its abstract describes a confirmation that returns a warrant binding the approved action to its exact parameter values; the warrant is consumed by the execution it authorizes, and the execution handler rejects a call whose warrant is missing, spent or bound to other values. The paper measures, with no adversarial input involved, how far a confirmation instruction in the prompt depends on model behaviour, and reports 1,880 episodes over three model backbones. Moving the check into the handler takes protocol-violating executions from 91/400 to 0/400.
 
 Ullr uses the same core mechanism and does not claim it as new. It differs in its assumptions and in what surrounds the mechanism:
 
@@ -211,20 +221,18 @@ Ullr uses the same core mechanism and does not claim it as new. It differs in it
 - An approval is also bound to the resource version, the policy hash and the provenance version, and expires.
 - Failure semantics are specified: idempotency keys enforced by the Tools service, an `UNKNOWN` state reconciled before any budget release, and cumulative budgets across agents.
 
-GateArena's evaluation is larger than the one planned here, and Ullr has no result yet to set beside it (see [Status](#status)).
+GateArena's evaluation is larger than the one planned here, and Ullr has no result yet to set beside it.
 
 ## 11. Limitations and threats to validity
 
 - The implementation is incomplete and no end-to-end claim is supported yet (see [Status](#status)).
-- The benchmark is about 30 tasks with 3 repetitions: prototype scale, no claim of generalization.
+- The benchmark is about 30 tasks with 3 repetitions on one or two models: prototype scale, no claim of generalization.
 - Scenarios and Gateway have the same author; suites are fixed before the policy is tuned.
 - Tools and approvers are simulated; showing provenance to a person is not measured.
-- One model, possibly two; nondeterminism is only partly controlled.
-- Session-level provenance over-approximates. Its cost shows up as lower task success and more escalations.
-- Provenance assumes a fresh agent context per session. If the agent carries memory across sessions (conversation history, persistent memory, retrieval over past outputs), injected content can reach a clean session unobserved.
+- Provenance over-approximates per session and assumes a fresh agent context (H7): memory carried across sessions brings injected content into a clean session unobserved.
 - A refund approval is bound to the account's version: another refund on that account makes pending approvals for it stale.
-- Strict text rules reject some legitimate input: tabs, joined emoji sequences, scripts using the zero-width non-joiner.
-- A real deployment would have to establish isolation, idempotency and preconditions for its own backends.
+- Strict text rules reject some legitimate input: tabs, joined emoji, scripts using zero-width joiners.
+- A real deployment must establish isolation, idempotency and preconditions for its own backends.
 
 ## References
 
@@ -232,7 +240,7 @@ GateArena's evaluation is larger than the one planned here, and Ullr has no resu
 2. E. Debenedetti, J. Zhang, M. Balunović, L. Beurer-Kellner, M. Fischer, F. Tramèr. *AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents.* 2024. <https://arxiv.org/abs/2406.13352>
 3. E. Debenedetti, I. Shumailov, T. Fan, J. Hayes, N. Carlini, D. Fabian, C. Kern, C. Shi, A. Terzis, F. Tramèr. *Defeating Prompt Injections by Design.* 2025. <https://arxiv.org/abs/2503.18813>
 4. X. Liu, Y. E. Zhang, V. Kasprova, P. Rabbani, P. S. Zahraei, T. Zhang, A. Ebrahimpour-Boroojeny, V. Chandrasekaran. *AgentAbstain: Do LLM Agents Know When Not to Act?* 2026. <https://arxiv.org/abs/2607.10059>
-5. L. Jiang, F. Quinzan, U. Bhatt. *GateArena: Environment-Enforced Confirmation for Irreversible Agent Actions.* NeurIPS 2026, workshop "Agents in the Wild: Safety, Security, and Beyond". <https://neurips.cc/virtual/2026/168290>. Paper: <https://openreview.net/forum?id=2fckzsPCbK>. Code: <https://github.com/Lannie520/GateArena>
+5. L. Jiang, F. Quinzan, U. Bhatt. *GateArena: Environment-Enforced Confirmation for Irreversible Agent Actions.* NeurIPS 2026, workshop "Agents in the Wild: Safety, Security, and Beyond". <https://neurips.cc/virtual/2026/168290>. Paper: <https://openreview.net/forum?id=2fckzsPCbK>
 
 ## License
 
