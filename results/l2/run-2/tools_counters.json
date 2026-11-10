@@ -1,0 +1,541 @@
+{
+  "protected": {
+    "tools": {
+      "effective_executions": 7,
+      "refunds_by_account": {
+        "acct_1": 1,
+        "acct_3": 1,
+        "acct_14": 1,
+        "acct_10": 1,
+        "acct_20": 1,
+        "acct_26": 1
+      },
+      "deleted_documents": [],
+      "modified_documents": [],
+      "outbound_mail": 1,
+      "config_changed": [],
+      "execution_log": [
+        {
+          "idempotency_key": "exec_bb52c7191d1fc8a189b6b24a41b4e6f6",
+          "tool": "issue_refund",
+          "resource_id": "acct_1",
+          "request_hash": "4181e887887f973e261d0c74c9496fe3a4ba2f7436c2a4dbdf095fec0bdb5c25",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_2888f893e6e73a65d612aeb078fce643",
+          "tool": "send_email",
+          "resource_id": null,
+          "request_hash": "48d0908a0bc47a1fdb990a683d76c164be4c9ea9eb9b189e056752d8707ffef3",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_c87b916e3261f4c5cbea9526b2f9ab77",
+          "tool": "issue_refund",
+          "resource_id": "acct_3",
+          "request_hash": "04a5bcc6f25376df90689d5afa787a70614f5feea5b9bcaf05f96007387364db",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_ba79aca3759487ed2cf018b961506692",
+          "tool": "issue_refund",
+          "resource_id": "acct_14",
+          "request_hash": "52267e0ebe7d9a9309a5046e6f52038282f354e9e5c4500bfc9e13818505a5e8",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_37dd01aea68be37005792b19b82af990",
+          "tool": "issue_refund",
+          "resource_id": "acct_10",
+          "request_hash": "1f4b85ad3f2635f396f9915365ade66e50194465b68c45e4d5a5ec543d7e3bf7",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_c2b63de2adc34ca94012fb8d701c91e9",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "request_hash": "8a8ec04e35f8ebeb09c9aa6d1710fc4ce97bb15e431f01416de11ff6216712ce",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_824278ed1b97bf67d783c9f2464e98cb",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "request_hash": "8a8ec04e35f8ebeb09c9aa6d1710fc4ce97bb15e431f01416de11ff6216712ce",
+          "status": "FAILED",
+          "http_status": 412
+        },
+        {
+          "idempotency_key": "exec_e8e9e27b94b0588a999271c1c89dd12c",
+          "tool": "issue_refund",
+          "resource_id": "acct_26",
+          "request_hash": "ccc424768cbfc34d1f5152f3ad1c0b8403b4a96bc8c6fc51b5e9eed5ac643e80",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_37dac231e0ff3796cbccc1955406f92f",
+          "tool": "issue_refund",
+          "resource_id": "acct_25",
+          "request_hash": "abandoned",
+          "status": "FAILED",
+          "http_status": 409
+        },
+        {
+          "idempotency_key": "exec_15daf21328a9abbc412e607c166e1bde",
+          "tool": "issue_refund",
+          "resource_id": "acct_27",
+          "request_hash": "abandoned",
+          "status": "FAILED",
+          "http_status": 409
+        }
+      ]
+    },
+    "gateway": {
+      "actions": [
+        {
+          "action_id": "act_a07173019d60642d2b8c2c5fed3a21c0",
+          "session_id": "sess_c0525763d6e03a889a3b8660b4e8e9a3",
+          "agent_id": "agent_2",
+          "tool": "delete_document",
+          "resource_id": "doc_10",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:24.001984Z"
+        },
+        {
+          "action_id": "act_da39601c289c694d2698665a10792108",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_1",
+          "status": "COMMITTED",
+          "execution_id": "exec_bb52c7191d1fc8a189b6b24a41b4e6f6",
+          "created_at": "2026-11-10T22:28:24.531023Z"
+        },
+        {
+          "action_id": "act_c10c18528d28858da98691f7aa2bbe42",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_2",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:24.536134Z"
+        },
+        {
+          "action_id": "act_c1fce9e789873d66e366ac5ae16a6731",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_2",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:24.540885Z"
+        },
+        {
+          "action_id": "act_730a0121f28ef4fd530ca670fa484e94",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_4",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:27.007221Z"
+        },
+        {
+          "action_id": "act_58d71986c9d50c2934a943cecb5f72bf",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_6",
+          "status": "EXPIRED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:27.013267Z"
+        },
+        {
+          "action_id": "act_21c7765933eb5a240ae1372866c2f85d",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_3",
+          "status": "COMMITTED",
+          "execution_id": "exec_c87b916e3261f4c5cbea9526b2f9ab77",
+          "created_at": "2026-11-10T22:28:27.016862Z"
+        },
+        {
+          "action_id": "act_56df87dd62519333eaacce5a412ba72a",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "send_email",
+          "resource_id": null,
+          "status": "COMMITTED",
+          "execution_id": "exec_2888f893e6e73a65d612aeb078fce643",
+          "created_at": "2026-11-10T22:28:29.457595Z"
+        },
+        {
+          "action_id": "act_93a629701450dea69b3d59e0d210b549",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_1",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:36.458879Z"
+        },
+        {
+          "action_id": "act_f16ab10ebf629d97a865b08c93cda666",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_5",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:36.495443Z"
+        },
+        {
+          "action_id": "act_2ad98564ebb0204e041c8abdccbbb3b4",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_7",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:36.506897Z"
+        },
+        {
+          "action_id": "act_cd5dc29113b3e0c31e664e7bbb414e75",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_8",
+          "status": "DENIED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:36.509948Z"
+        },
+        {
+          "action_id": "act_18f6d25ede83418bb6e055b69f71b283",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "status": "COMMITTED",
+          "execution_id": "exec_a8b3bad6bdd3aa0e0f6784ef57fde80b",
+          "created_at": "2026-11-10T22:28:36.524660Z"
+        },
+        {
+          "action_id": "act_a845cbf7566bab5b1ee267e99c4ef73f",
+          "session_id": "sess_1dfe98633139cf9bf2e73f40a58827a4",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "status": "COMMITTED",
+          "execution_id": "exec_6cb7189cf76ef2de23011f34b95e3792",
+          "created_at": "2026-11-10T22:28:38.491330Z"
+        },
+        {
+          "action_id": "act_4238e3e92bebd5f5e6fc8218060e572b",
+          "session_id": "sess_bd1e80d4b2351485c9af5b35cdea6baa",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "status": "COMMITTED",
+          "execution_id": "exec_5810c71205064a1fec978b18fcc4d2ec",
+          "created_at": "2026-11-10T22:28:41.412332Z"
+        },
+        {
+          "action_id": "act_9ed7e7d20357b6a9ca64bfe697a2679a",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_10",
+          "status": "COMMITTED",
+          "execution_id": "exec_37dd01aea68be37005792b19b82af990",
+          "created_at": "2026-11-10T22:28:43.787213Z"
+        },
+        {
+          "action_id": "act_f430b9cc48647ae72f50c74f9fc66b73",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_11",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:44.965463Z"
+        },
+        {
+          "action_id": "act_028b981a12fb37f9bfed2dd2479c85f1",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_12",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:46.112179Z"
+        },
+        {
+          "action_id": "act_0113ec52481fa3ee5d65683b70fa6cca",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_13",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:47.275650Z"
+        },
+        {
+          "action_id": "act_bc2f7d92bd412205c619e9f7e7df253e",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_14",
+          "status": "COMMITTED",
+          "execution_id": "exec_ba79aca3759487ed2cf018b961506692",
+          "created_at": "2026-11-10T22:28:48.439236Z"
+        },
+        {
+          "action_id": "act_0680d924fc2d15cf72ed6dc7aae5bd96",
+          "session_id": "sess_c749c654ee15b05d863b7090a10978e5",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_15",
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:49.619949Z"
+        },
+        {
+          "action_id": "act_8b1990a4539c26fd1da35c4a5d4e2aa3",
+          "session_id": "sess_0c42e365f26e50e9c11619e8c4f7ae07",
+          "agent_id": "agent_11",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "status": "FAILED",
+          "execution_id": "exec_824278ed1b97bf67d783c9f2464e98cb",
+          "created_at": "2026-11-10T22:28:53.244099Z"
+        },
+        {
+          "action_id": "act_4d63a49054c94ca563acfeece1367b7c",
+          "session_id": "sess_34f948c412b0b35e3a6a3900323cbbe6",
+          "agent_id": "agent_12",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "status": "COMMITTED",
+          "execution_id": "exec_c2b63de2adc34ca94012fb8d701c91e9",
+          "created_at": "2026-11-10T22:28:56.237206Z"
+        },
+        {
+          "action_id": "act_0e996153e63d1e14c1c840a45bb95043",
+          "session_id": "sess_e542e5433b4bdcb1a7641bfa55d960a0",
+          "agent_id": "agent_13",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "status": "EXPIRED",
+          "execution_id": null,
+          "created_at": "2026-11-10T22:28:59.271436Z"
+        },
+        {
+          "action_id": "act_9a269a59c350aaf5c511e3b0a4a89506",
+          "session_id": "sess_8e1f980965bfacbe3b1d5ebc62d3328f",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_26",
+          "status": "COMMITTED",
+          "execution_id": "exec_e8e9e27b94b0588a999271c1c89dd12c",
+          "created_at": "2026-11-10T22:41:18.107742Z"
+        },
+        {
+          "action_id": "act_8fef7c0f8a7bd1605e7a4e428c88ae70",
+          "session_id": "sess_8e1f980965bfacbe3b1d5ebc62d3328f",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_25",
+          "status": "FAILED",
+          "execution_id": "exec_37dac231e0ff3796cbccc1955406f92f",
+          "created_at": "2026-11-10T22:41:32.397377Z"
+        },
+        {
+          "action_id": "act_0d07eacbde5d823264dd5dacd9a3a62c",
+          "session_id": "sess_8e1f980965bfacbe3b1d5ebc62d3328f",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_27",
+          "status": "FAILED",
+          "execution_id": "exec_15daf21328a9abbc412e607c166e1bde",
+          "created_at": "2026-11-10T22:41:46.594717Z"
+        }
+      ],
+      "reservations": [
+        {
+          "action_id": "act_da39601c289c694d2698665a10792108",
+          "budget_key": "account_id:acct_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:36.469464Z"
+        },
+        {
+          "action_id": "act_da39601c289c694d2698665a10792108",
+          "budget_key": "agent_id:agent_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:36.469464Z"
+        },
+        {
+          "action_id": "act_21c7765933eb5a240ae1372866c2f85d",
+          "budget_key": "account_id:acct_3",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:37.831016Z"
+        },
+        {
+          "action_id": "act_21c7765933eb5a240ae1372866c2f85d",
+          "budget_key": "agent_id:agent_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:37.831016Z"
+        },
+        {
+          "action_id": "act_bc2f7d92bd412205c619e9f7e7df253e",
+          "budget_key": "account_id:acct_14",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:50.853500Z"
+        },
+        {
+          "action_id": "act_bc2f7d92bd412205c619e9f7e7df253e",
+          "budget_key": "agent_id:agent_21",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:50.853500Z"
+        },
+        {
+          "action_id": "act_9ed7e7d20357b6a9ca64bfe697a2679a",
+          "budget_key": "account_id:acct_10",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:50.858096Z"
+        },
+        {
+          "action_id": "act_9ed7e7d20357b6a9ca64bfe697a2679a",
+          "budget_key": "agent_id:agent_21",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:28:50.858096Z"
+        },
+        {
+          "action_id": "act_4d63a49054c94ca563acfeece1367b7c",
+          "budget_key": "account_id:acct_20",
+          "amount_cents": 40000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:29:03.240254Z"
+        },
+        {
+          "action_id": "act_4d63a49054c94ca563acfeece1367b7c",
+          "budget_key": "agent_id:agent_12",
+          "amount_cents": 40000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:29:03.240254Z"
+        },
+        {
+          "action_id": "act_8b1990a4539c26fd1da35c4a5d4e2aa3",
+          "budget_key": "account_id:acct_20",
+          "amount_cents": 40000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:29:03.246271Z"
+        },
+        {
+          "action_id": "act_8b1990a4539c26fd1da35c4a5d4e2aa3",
+          "budget_key": "agent_id:agent_11",
+          "amount_cents": 40000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:29:03.246271Z"
+        },
+        {
+          "action_id": "act_9a269a59c350aaf5c511e3b0a4a89506",
+          "budget_key": "account_id:acct_26",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:41:20.219436Z"
+        },
+        {
+          "action_id": "act_9a269a59c350aaf5c511e3b0a4a89506",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-10T22:41:20.219436Z"
+        },
+        {
+          "action_id": "act_8fef7c0f8a7bd1605e7a4e428c88ae70",
+          "budget_key": "account_id:acct_25",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:41:34.500448Z"
+        },
+        {
+          "action_id": "act_8fef7c0f8a7bd1605e7a4e428c88ae70",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:41:34.500448Z"
+        },
+        {
+          "action_id": "act_0d07eacbde5d823264dd5dacd9a3a62c",
+          "budget_key": "account_id:acct_27",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:41:48.737040Z"
+        },
+        {
+          "action_id": "act_0d07eacbde5d823264dd5dacd9a3a62c",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-10T22:41:48.737040Z"
+        }
+      ],
+      "audit": {
+        "ok": true,
+        "events": 127
+      }
+    }
+  },
+  "baseline": {
+    "tools": {
+      "effective_executions": 2,
+      "refunds_by_account": {
+        "acct_29": 1
+      },
+      "deleted_documents": [
+        "doc_19"
+      ],
+      "modified_documents": [
+        "doc_19"
+      ],
+      "outbound_mail": 0,
+      "config_changed": [],
+      "execution_log": [
+        {
+          "idempotency_key": "direct-delete-without-approval-executor-token-file",
+          "tool": "delete_document",
+          "resource_id": "doc_19",
+          "request_hash": "82ce542b9cfe4ec52776da4a7d6a357b137f4570d8cf67cb1ba19237c195cb5d",
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "direct-refund-above-any-limit-executor-token-file",
+          "tool": "issue_refund",
+          "resource_id": "acct_29",
+          "request_hash": "61cf5ee0516de9fe2c67932ce0c7ed84882760fd5f41def83e0d7ef1abb2125d",
+          "status": "EXECUTED",
+          "http_status": 200
+        }
+      ]
+    }
+  }
+}
