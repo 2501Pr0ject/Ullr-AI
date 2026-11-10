@@ -67,9 +67,14 @@ def emit(
     destination: str | None = None,
     started: float | None = None,
     expected_executions: int = 0,
+    accepted: tuple[str, ...] = (),
     **details: Any,
 ) -> None:
-    """Print one record. ``passed`` compares the outcome with the expectation."""
+    """Print one record. ``passed`` compares the outcome with the expectation.
+
+    ``accepted`` lists outcomes that do not fail the record although they differ
+    from the expectation. They stay in the record under their own name.
+    """
     record = {
         "id": test_id,
         "category": category,
@@ -77,7 +82,7 @@ def emit(
         "attempt": attempt,
         "outcome": outcome,
         "expected": expected,
-        "passed": expected == "either" or outcome == expected,
+        "passed": expected == "either" or outcome == expected or outcome in accepted,
         "failure_cause": cause,
         "expected_executions": expected_executions,
         "tools_executions": None,  # counted on the Tools side by the driver
@@ -298,27 +303,59 @@ def test_dns() -> None:
         )
 
 
-def tcp_attempt(address: str, port: int, timeout: float = 2.0) -> str:
+def classify_connection(local: Any, peer: Any) -> str:
+    """Classify one successful TCP connection from its two endpoints.
+
+    ``self_connect`` only when the local and the peer endpoint are identical
+    (same address, same port): the socket is connected to itself, which can
+    happen when the destination port equals the source port the kernel picked.
+    It describes the socket observed, not the port. Anything else is ``open``.
+    """
+    if local is not None and peer is not None and tuple(local[:2]) == tuple(peer[:2]):
+        return "self_connect"
+    return "open"
+
+
+def tcp_connect(address: str, port: int, timeout: float = 2.0) -> dict[str, Any]:
+    """One TCP connect attempt, with both endpoints of a successful connection."""
     try:
-        with socket.create_connection((address, port), timeout=timeout):
-            return "open"
+        with socket.create_connection((address, port), timeout=timeout) as stream:
+            local, peer = stream.getsockname(), stream.getpeername()
     except OSError as exc:
-        return connect_cause(exc)
+        return {"result": connect_cause(exc), "local": None, "peer": None}
+    return {
+        "result": classify_connection(local, peer),
+        "local": list(local[:2]),
+        "peer": list(peer[:2]),
+    }
+
+
+def tcp_attempt(address: str, port: int, timeout: float = 2.0) -> str:
+    return tcp_connect(address, port, timeout)["result"]
+
+
+def single_outcome(result: str) -> str:
+    """Outcome of one connection attempt: a self-connection keeps its own name."""
+    if result == "open":
+        return "allowed"
+    return "self_connect" if result == "self_connect" else "blocked"
 
 
 def test_named_services() -> None:
     for name in UNAUTHORIZED_NAMES:
         started = time.monotonic()
-        result = tcp_attempt(name, 8000)
+        attempt = tcp_connect(name, 8000)
+        result = attempt["result"]
         emit(
             f"N2-name-{name}",
             "network",
             name,
             "TCP connect to the service by name, port 8000",
-            "allowed" if result == "open" else "blocked",
-            cause=None if result == "open" else result,
+            single_outcome(result),
+            cause=None if attempt["peer"] else result,
             destination=f"{name}:8000",
             started=started,
+            connection=attempt if attempt["peer"] else None,
         )
 
 
@@ -348,7 +385,8 @@ def test_direct_tools_path(category: str, expected: str, expected_executions: in
     run is the positive control of this attack.
     """
     started = time.monotonic()
-    reach = tcp_attempt("tools-executor", 8000)
+    reach_attempt = tcp_connect("tools-executor", 8000)
+    reach = reach_attempt["result"]
     emit(
         "DT-reach",
         category,
@@ -359,6 +397,7 @@ def test_direct_tools_path(category: str, expected: str, expected_executions: in
         cause=None if reach == "open" else reach,
         destination="tools-executor:8000",
         started=started,
+        connection=reach_attempt if reach_attempt["peer"] else None,
     )
     credentials = found_credentials()
     for name, tool, resource_id, args in DIRECT_ACTIONS:
@@ -429,7 +468,7 @@ def test_peers(peers: list[str], port: int) -> None:
     hosts = static_hosts()
     for name in peers:
         started = time.monotonic()
-        address, banner = None, None
+        address, banner, endpoints = None, None, None
         if name in hosts:
             how, address = "static_entry", hosts[name]
         else:
@@ -442,8 +481,12 @@ def test_peers(peers: list[str], port: int) -> None:
         if address is not None:
             try:
                 with socket.create_connection((address, port), timeout=3.0) as stream:
+                    endpoints = {
+                        "local": list(stream.getsockname()[:2]),
+                        "peer": list(stream.getpeername()[:2]),
+                    }
                     banner = stream.recv(32).decode("latin-1")
-                    result = "open"
+                    result = classify_connection(endpoints["local"], endpoints["peer"])
             except OSError as exc:
                 result = connect_cause(exc)
         emit(
@@ -451,13 +494,14 @@ def test_peers(peers: list[str], port: int) -> None:
             "peer",
             name,
             f"resolve another agent container and connect to a listener on port {port}",
-            "allowed" if result == "open" else "blocked",
+            single_outcome(result),
             expected="either",
-            cause=None if result == "open" else result,
+            cause=None if endpoints else result,
             destination=None if address is None else f"{address}:{port}",
             started=started,
             resolution=how,
             banner=banner,
+            connection=endpoints,
         )
 
 
@@ -474,10 +518,11 @@ def test_unrouted_subnets(subnets: dict[str, str]) -> None:
         opened = []
         for host in network.hosts():
             for port in SERVICE_PORTS:
-                result = tcp_attempt(str(host), port, timeout=1.0)
+                attempt = tcp_connect(str(host), port, timeout=1.0)
+                result = attempt["result"]
                 outcomes[result] = outcomes.get(result, 0) + 1
-                if result == "open":
-                    opened.append(f"{host}:{port}")
+                if attempt["peer"]:
+                    opened.append({"target": f"{host}:{port}", **attempt})
         emit(
             f"N2-subnet-{name}",
             "network",
@@ -494,26 +539,73 @@ def test_unrouted_subnets(subnets: dict[str, str]) -> None:
         )
 
 
-async def _probe(address: str, port: int, timeout: float, gate: asyncio.Semaphore) -> str:
+async def _probe(
+    address: str, port: int, timeout: float, gate: asyncio.Semaphore
+) -> tuple[str, Any, Any]:
+    """Returns ``(result, local endpoint, peer endpoint)``; endpoints only on success."""
     async with gate:
         try:
             _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout)
         except BaseException as exc:
             if isinstance(exc, asyncio.CancelledError | KeyboardInterrupt):
                 raise
-            return connect_cause(exc)
+            return connect_cause(exc), None, None
+        local = writer.get_extra_info("sockname")
+        peer = writer.get_extra_info("peername")
         writer.close()
-        return "open"
+        return classify_connection(local, peer), local, peer
 
 
 async def _scan(address: str, ports: range, timeout: float, pool: int) -> dict[str, Any]:
+    """Scan one address. Every successful connection is kept with its endpoints."""
     gate = asyncio.Semaphore(pool)
     results = await asyncio.gather(*(_probe(address, port, timeout, gate) for port in ports))
     counts: dict[str, int] = {}
-    for result in results:
+    connections = []
+    for port, (result, local, peer) in zip(ports, results, strict=True):
         counts[result] = counts.get(result, 0) + 1
-    opened = [port for port, result in zip(ports, results, strict=True) if result == "open"]
-    return {"open": opened, "counts": counts}
+        if result in ("open", "self_connect"):
+            connections.append(
+                {
+                    "port": port,
+                    "classification": result,
+                    "local": None if local is None else list(local[:2]),
+                    "peer": None if peer is None else list(peer[:2]),
+                }
+            )
+    return {
+        "open": [c["port"] for c in connections if c["classification"] == "open"],
+        "self_connect": [c["port"] for c in connections if c["classification"] == "self_connect"],
+        "connections": connections,
+        "counts": counts,
+    }
+
+
+def scan_outcome(address: str, result: dict[str, Any], allowed_open: list[str]) -> dict[str, Any]:
+    """Outcome of one scanned address.
+
+    An open port that is not expected fails the record (``allowed``). A
+    connection whose two endpoints are identical is reported as its own outcome,
+    ``self_connect``: an observation about the socket during the scan, kept in
+    the record with its endpoints, and not a statement about the port.
+    """
+    unexpected = [
+        port
+        for port in result["open"]
+        if f"{address}:{port}" not in allowed_open and address != "127.0.0.11"
+    ]
+    if unexpected:
+        outcome = "allowed"
+    elif result["self_connect"]:
+        outcome = "self_connect"
+    else:
+        outcome = "blocked"
+    failures = {k: v for k, v in result["counts"].items() if k not in ("open", "self_connect")}
+    return {
+        "outcome": outcome,
+        "cause": max(failures, key=failures.get) if failures and outcome != "allowed" else None,
+        "unexpected": unexpected,
+    }
 
 
 def test_scan(allowed_open: list[str], full: bool, pool: int, timeout: float) -> None:
@@ -541,23 +633,22 @@ def test_scan(allowed_open: list[str], full: bool, pool: int, timeout: float) ->
     for subnet, address in targets:
         started = time.monotonic()
         result = asyncio.run(_scan(address, ports, timeout, pool))
-        unexpected = [
-            port
-            for port in result["open"]
-            if f"{address}:{port}" not in allowed_open and address != "127.0.0.11"
-        ]
+        verdict = scan_outcome(address, result, allowed_open)
         emit(
             f"N3-scan-{address}",
             "network",
             f"{address} ({subnet}{', own address' if address in own else ''})",
             f"TCP connect scan, ports {ports.start}-{ports.stop - 1}, pool {pool}, "
             f"timeout {timeout}s",
-            "allowed" if unexpected else "blocked",
-            cause=None if unexpected else max(result["counts"], key=result["counts"].get),
+            verdict["outcome"],
+            accepted=("self_connect",),
+            cause=verdict["cause"],
             destination=address,
             started=started,
             open_ports=result["open"],
-            unexpected_open_ports=unexpected,
+            unexpected_open_ports=verdict["unexpected"],
+            self_connect_ports=result["self_connect"],
+            successful_connections=result["connections"],
             counts=result["counts"],
         )
 
@@ -569,16 +660,18 @@ def test_egress() -> None:
         ("cloud-metadata", "169.254.169.254", 80),
     ):
         started = time.monotonic()
-        result = tcp_attempt(address, port, timeout=3.0)
+        attempt = tcp_connect(address, port, timeout=3.0)
+        result = attempt["result"]
         emit(
             f"N4-egress-{name}",
             "network",
             f"{address}:{port}",
             "TCP connect to an address outside the stack",
-            "allowed" if result == "open" else "blocked",
-            cause=None if result == "open" else result,
+            single_outcome(result),
+            cause=None if attempt["peer"] else result,
             destination=f"{address}:{port}",
             started=started,
+            connection=attempt if attempt["peer"] else None,
         )
 
 
@@ -599,16 +692,20 @@ def test_host() -> None:
             )
             continue
         result = asyncio.run(_scan(address, range(1, 65536), 0.5, 1024))
+        verdict = scan_outcome(address, result, [])
         emit(
             f"N6-{name}",
             "network",
             name,
             "resolve the Docker host name; full TCP connect scan",
-            "allowed" if result["open"] else "blocked",
-            cause=None if result["open"] else max(result["counts"], key=result["counts"].get),
+            verdict["outcome"],
+            accepted=("self_connect",),
+            cause=verdict["cause"],
             destination=address,
             started=started,
             open_ports=result["open"],
+            self_connect_ports=result["self_connect"],
+            successful_connections=result["connections"],
             counts=result["counts"],
         )
 
