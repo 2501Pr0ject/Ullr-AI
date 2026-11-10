@@ -12,7 +12,7 @@ and asks for confirmation before signing.
 import argparse
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -72,13 +72,19 @@ def build_decision(
     approver_id: str,
     private_key: Ed25519PrivateKey,
     now: datetime,
+    *,
+    expires_in: float | None = None,
 ) -> dict[str, Any]:
     """Build and sign the decision for one displayed request.
 
     Refuses to sign if the displayed tool, resource and arguments do not hash
-    to the action hash that would be signed.
+    to the action hash that would be signed. ``expires_in`` shortens the
+    validity of the decision; it can never extend the request's own expiry.
     """
-    request = view["request"]
+    request = dict(view["request"])
+    if expires_in is not None:
+        sooner = (now + timedelta(seconds=expires_in)).strftime(signing.TIMESTAMP_FORMAT)
+        request["expires_at"] = min(sooner, request["expires_at"])
     try:
         displayed = action_hash(request["tool"], request["resource_id"], view["args"])
     except CanonError:
@@ -109,13 +115,21 @@ def decide(
     *,
     confirm: Callable[[str], bool],
     now: datetime | None = None,
+    expires_in: float | None = None,
 ) -> str:
     """Show one pending request, ask for confirmation, sign and submit. Returns the new status."""
     matches = [v for v in fetch_pending(http, token) if v["request"]["action_id"] == action_id]
     if len(matches) != 1:
         raise ApproverError("no pending request with this action id")
     view = matches[0]
-    body = build_decision(view, decision, approver_id, private_key, now or datetime.now(UTC))
+    body = build_decision(
+        view,
+        decision,
+        approver_id,
+        private_key,
+        now or datetime.now(UTC),
+        expires_in=expires_in,
+    )
     if not confirm(render(view)):
         raise ApproverError("not confirmed: nothing was signed or sent")
     response = http.post(f"/v1/approvals/{action_id}/decision", json=body)
@@ -146,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--key", required=True, help="approver private key file")
             sub.add_argument("--approver-id", required=True)
             sub.add_argument("--yes", action="store_true", help="sign without asking")
+            sub.add_argument(
+                "--expires-in", type=float, help="shorten the decision's validity (seconds)"
+            )
 
     args = parser.parse_args(argv)
     try:
@@ -167,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.approver_id,
                 keys.load(args.key),
                 confirm=(lambda text: print(text) or True) if args.yes else _ask,
+                expires_in=args.expires_in,
             )
             print(f"\n{args.action_id}: {status}")
             return 0

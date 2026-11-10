@@ -10,6 +10,7 @@ from conftest import (
     APPROVER_PUBLIC,
     APPROVER_TOKEN,
     OUTSIDER_PRIVATE,
+    FakeClock,
     execute,
     new_session,
     pending_requests,
@@ -238,3 +239,17 @@ def test_unknown_action_id(env):
             approver_key(),
             confirm=lambda text: True,
         )
+
+
+def test_approver_can_shorten_but_never_extend_the_validity(make_env):
+    env = make_env(clock=FakeClock())  # the Gateway's clock starts at NOW
+    tainted_refund(env)
+    view = pending_requests(env)[0]
+    limit = view["request"]["expires_at"]
+
+    shorter = cli.build_decision(view, "APPROVE", "human_1", approver_key(), NOW, expires_in=2)
+    assert shorter["payload"]["expires_at"] == "2026-11-11T10:00:02.000000Z"
+    assert shorter["payload"]["expires_at"] < limit
+
+    longer = cli.build_decision(view, "APPROVE", "human_1", approver_key(), NOW, expires_in=10**9)
+    assert longer["payload"]["expires_at"] == limit
