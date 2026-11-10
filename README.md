@@ -6,7 +6,7 @@ Ullr enforces authorization policies on every protected action routed through it
 
 Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award categories: financial transactions, digital system changes, delegated actions. This document is the paper; the specification lives in [`docs/`](docs/).
 
-> **Work in progress.** The design is specified and frozen. Only the foundations are implemented so far. The [Status](#status) table states exactly what exists and what is tested; every other section describes the design and says so.
+> **Work in progress.** The design is specified and frozen. The Tools service and the Gateway core are implemented; approvals, container isolation and the benchmark are not. The [Status](#status) table states exactly what exists and what is tested; every other section describes the design and says so.
 
 ## Abstract
 
@@ -19,16 +19,17 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 | Canonicalization v1, action hash | yes | yes (unit) | — |
 | Tool allow-list and per-tool schemas | yes | yes (unit) | — |
 | Policy loader, policy hash, tier table | yes | yes (unit) | — |
-| Tools service (executor and admin APIs) | no | no | M1 |
-| Gateway API, audit chain, proxied reads, provenance | no | no | M1 |
-| Approvals, signed decisions, execution transaction, budgets, reconciliation | no | no | M2 |
+| Tools service: executor token, idempotency keys, version preconditions, admin API | yes | yes (in-process HTTP) | — |
+| Gateway: admin-issued sessions, strict request handling, policy decision, execution of allowed (R0/R1) actions, proxied reads with provenance | yes | yes (in-process HTTP) | — |
+| Audit table: append-only triggers, hash chain, `verify-audit` | yes | yes (unit) | — |
+| Approvals, signed decisions, execution of approved (R2) actions, budgets, reconciliation of `UNKNOWN` | no | no | M2 |
 | Container isolation, scripted attacker (L2) | no | no | M3 |
 | Agent loop, benchmark harness (L3) | no | no | M4 |
 | Full runs and result tables | no | no | M5 |
 | One real protocol behind the Gateway (SMTP to a local Mailpit container) | no | no | after M3, if the schedule allows |
 | External audit anchoring, truncation detection | no | no | deferred, no milestone |
 
-At this stage the repository contains no network service: nothing can be bypassed yet because nothing is executed yet. No guarantee in this document is demonstrated end to end.
+At this stage the services run and are tested in one process, through their HTTP interfaces. There is no container isolation yet, so the bypass claims against a compromised runtime (L2) are untested. An irreversible action cannot be executed at all, because the approval path does not exist yet: every R2 proposal stops at `PENDING_APPROVAL`. No guarantee in this document is demonstrated end to end.
 
 ## 1. Problem and motivation
 
@@ -134,15 +135,15 @@ Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is giv
 
 **Signed decisions (planned, M2).** The approver signs, with Ed25519, a domain-separation prefix followed by the canonical JSON of the full decision payload. The Gateway looks the key up in its registry, never in the payload, and rejects a decision in which any field differs from the stored record.
 
-**Execution and idempotency (planned, M1–M2).** Allowed actions execute within the proposing request. Approved actions are executed by a second call that resends the arguments: in one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. Both then follow the same path. There is no transaction spanning the Gateway and the Tools service: the Gateway records the intent, calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. The Gateway then records the outcome. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
+**Execution and idempotency (allowed actions implemented; approved actions planned, M2).** Allowed actions execute within the proposing request. Approved actions are executed by a second call that resends the arguments: in one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. Both then follow the same path. There is no transaction spanning the Gateway and the Tools service: the Gateway records the intent, calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. The Gateway then records the outcome. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
 
 **Budgets (planned, M2).** Cumulative caps per account, shared by all agents, and per agent, checked and reserved inside the execution transaction.
 
-**Sessions (planned, M1).** Sessions are created by a trusted party through an admin-only endpoint; the agent token is bound to one session and the agent API cannot create or switch sessions. This closes provenance laundering through a fresh session.
+**Sessions (implemented).** Sessions are created by a trusted party through an admin-only endpoint; the agent token is bound to one session and the agent API cannot create or switch sessions. This closes provenance laundering through a fresh session.
 
-**Provenance (planned, M1–M2).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
+**Provenance (tracking implemented; display to the approver planned, M2).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
 
-**Audit (planned, M1).** An append-only table with a hash chain, written in the same transaction as the security state transition it records. Verification detects a modified entry. Bypass measurement does not rest on this log alone: the Tools execution table is cross-checked against the Gateway's records.
+**Audit (implemented).** An append-only table with a hash chain, written in the same transaction as the security state transition it records. Verification detects a modified entry. Bypass measurement does not rest on this log alone: the Tools execution table is cross-checked against the Gateway's records.
 
 ## 6. Evaluation protocol
 
@@ -186,16 +187,23 @@ Gateway overhead (p50 / p95 decision latency): TBD.
 
 ## 8. Tested bypasses
 
-Tests so far exercise input handling only, at unit level. "Partial" means the building block is tested but the end-to-end property is not.
+Tests so far run in one process: unit tests and requests through the HTTP interfaces of the Gateway and the Tools service. None runs across a container boundary. "Partial" means the building block is tested but the end-to-end property is not.
 
 | Threat | Test | Result |
 |---|---|---|
-| T9 Unknown tool, alias, case variant | `tests/test_schemas.py::test_unknown_alias_and_variant_tool_names_rejected`, `tests/test_policy.py::test_tier_of_unknown_tool_raises` | Rejected (unit) |
-| T10 Malformed or ambiguous arguments | `tests/test_canon.py` (duplicate keys, floats, `NaN`, encodings, non-NFC, invisible characters), `tests/test_schemas.py` (identifiers, amounts, unknown fields, coercion) | Rejected (unit) |
-| T4 Arguments changed after approval | `tests/test_canon.py::test_action_hash_changes_with_any_component` | Partial: the hash changes; recheck at execution is M2 |
-| T12 Forged provenance | `tests/test_schemas.py::test_agent_supplied_control_fields_rejected` | Partial: claims in arguments are rejected; Gateway-derived provenance is M1 |
+| T2 R2 action without approval | `tests/test_gateway_api.py::test_irreversible_action_is_never_executed_without_approval`, `tests/test_policy_decide.py` | Not executed. Partial: the approved path is M2 |
+| T3 Approval replayed | `tests/test_tools_executor.py::test_same_key_twice_executes_once_and_replays_the_result`, `::test_concurrent_calls_with_one_key_execute_once` | Partial: Tools-side idempotency holds; single-use approvals are M2 |
+| T4 Arguments changed after approval | `tests/test_canon.py::test_action_hash_changes_with_any_component`, `tests/test_gateway_api.py::test_changed_arguments_at_execution_are_refused` | Partial: mismatch refused; execution of approved actions is M2 |
+| T5 Resource modified before execution | `tests/test_tools_executor.py::test_stale_precondition_is_not_executed`, `tests/test_gateway_api.py::test_resource_changed_between_observation_and_execution` | Not executed (R1). Partial: binding to an approval is M2 |
+| T9 Unknown tool, alias, case variant | `tests/test_schemas.py::test_unknown_alias_and_variant_tool_names_rejected`, `tests/test_gateway_api.py::test_unknown_alias_and_case_variant_tools_are_denied` | Rejected |
+| T10 Malformed or ambiguous arguments | `tests/test_canon.py`, `tests/test_schemas.py`, `tests/test_gateway_api.py::test_malformed_proposals_are_denied`, `tests/test_asgi.py` (size limit) | Rejected |
+| T12 Forged or laundered provenance | `tests/test_gateway_sessions.py` (no session creation or switching by the agent, taint is permanent, laundering scenario), `tests/test_provenance.py` | Rejected |
+| T13 Error or timeout leads to execution | `tests/test_gateway_api.py` (Tools unreachable, unexpected replies, timeouts, audit failure) | Fails closed. Partial: approval timeout is M2 |
+| T15 Execution without audit, audit tampering | `tests/test_audit.py`, `tests/test_gateway_api.py::test_audit_failure_means_nothing_is_executed`, `::test_every_state_transition_has_its_audit_event` | Rejected or detected. Tail truncation is not detected (deferred) |
 | T17 Policy changed after approval | `tests/test_policy.py::test_any_byte_change_changes_the_policy_hash` | Partial: the hash changes; invalidation is M2 |
-| T1–T3, T5–T8, T11, T13–T16, T18–T20 | — | Not yet tested |
+| T19 Timeout after execution | `tests/test_gateway_api.py::test_timeout_after_the_tools_service_executed_is_unknown` | Partial: recorded as `UNKNOWN`; reconciliation is M2 |
+| T20 Agent reaches evaluation endpoints | `tests/test_tools_admin.py` | Partial: separate application and token; network separation is M3 |
+| T1, T6–T8, T11, T14, T16, T18 | — | Not yet tested |
 
 ## 9. Reproducibility
 
