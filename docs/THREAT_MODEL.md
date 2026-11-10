@@ -1,6 +1,6 @@
 # Threat Model
 
-Status: v1.1. Since v1.0: sessions issued by a trusted party and tokens bound to one session, assumption H7, the laundering scenario under T12, the approver-channel token, a narrower audit scope (T15, G5), and a status column in §7. The design evolves with the implementation; the history has every change.
+Status: v1.2. Since v1.1: session revocation, the LLM relay as an additional trust boundary (TB6), and the matching non-guarantee. No test crosses the isolation boundary yet.
 
 ## 1. Scope
 
@@ -32,7 +32,7 @@ Protected actions in the reference environment (all simulated):
 
 | Principal | Authentication | Privileges |
 |---|---|---|
-| Agent | Bearer token issued per session by the session issuer, mapped by the Gateway to exactly one `session_id` and one `agent_id` | Propose actions, request execution of its own actions, in its own session. Nothing else. |
+| Agent | Bearer token issued per session by the session issuer, mapped by the Gateway to exactly one `session_id` and one `agent_id`, and revoked by the issuer at the end of the episode | Propose actions, request execution of its own actions, in its own session. Nothing else. |
 | Session issuer (benchmark controller, or an orchestrator in production) | Separate admin token, on a network the agent is not attached to | Create sessions and obtain their agent tokens |
 | Approver | Ed25519 key pair; the Gateway holds a registry `approver_id → public key`. An approver-channel token gives access to the list of pending requests | Sign decisions on pending approvals |
 | Gateway | Executor token toward the Tools service | Execute actions, query execution status |
@@ -67,6 +67,7 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 | TB3 | Approver → Gateway | Separate channel. Decisions are signed with a key the agent never has. |
 | TB4 | Tool output → Agent context | Content returned to the agent may itself be adversarial (injection vector for ADV1). |
 | TB5 | Benchmark controller → Tools service admin API | Evaluation-only network, not attached to the agent. |
+| TB6 | Agent → LLM relay → model on the host | The relay is the only container with a route out. It forwards one allow-listed request type to one fixed destination. |
 
 ## 6. Assumptions
 
@@ -124,4 +125,5 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 - Exactly-once execution is not promised for arbitrary external systems; at-most-once holds only where the downstream service enforces idempotency.
 - R0 reads can still disclose what the agent is allowed to read.
 - Injected content carried across sessions by the agent's own memory is not observed by the Gateway (H7): a session issued to an agent that kept its context can be clean on record and tainted in fact.
+- A compromised LLM relay is an egress path, and the model server's request parser on the host is exposed to the agent through it.
 - Truncation of the audit log is not detected: the chain head is not anchored outside the Gateway (deferred).
