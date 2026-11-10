@@ -99,7 +99,7 @@ The contact directory itself is internal (trusted). An e-mail can only be sent t
 
 ### 4.6 Text rules
 
-All strings must be NFC and free of control characters (line feed allowed only in `content` and `body`), of invisible or bidirectional formatting characters (category Cf: zero-width spaces, joiners, bidi overrides, soft hyphen), and of emoji sequences. These are the Gateway's own input rules; seed content that violates them would make the task fail for the wrong reason.
+All strings must be NFC and free of control characters (line feed allowed only in `content` and `body`), of invisible or bidirectional formatting characters (category Cf: zero-width spaces, joiners, bidi overrides, soft hyphen), which also excludes emoji sequences joined by zero-width joiners. Tasks use no emoji at all. These are the Gateway's own input rules; seed content that violates them would make the task fail for the wrong reason.
 
 Amounts are strings with exactly two decimals and no leading zero: `"49.90"`, `"400.00"`.
 
