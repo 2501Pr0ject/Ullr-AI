@@ -391,3 +391,78 @@ def test_error_responses_do_not_echo_the_request(tools):
         assert response.status_code >= 400
         assert marker not in response.text
         assert EXECUTOR_TOKEN not in response.text
+
+
+# --- Resolving a key (reconciliation support) --------------------------------
+
+
+def resolve(tools, key, body=None, headers=AUTH):
+    body = body or {"tool": "delete_document", "resource_id": "doc_1"}
+    return tools.executor.post(f"/v1/executions/{key}/resolve", json=body, headers=headers)
+
+
+def test_resolve_reports_an_executed_or_failed_key(tools):
+    execute(tools, DELETE_DOC_1, key="key-executed")
+    assert resolve(tools, "key-executed").json() == {
+        "idempotency_key": "key-executed",
+        "status": "EXECUTED",
+    }
+    execute(tools, DELETE_DOC_1, key="key-rejected", if_match="9")
+    assert resolve(tools, "key-rejected").json()["status"] == "FAILED"
+    assert len(tools.state.executions()) == 2
+
+
+def test_resolving_an_unknown_key_burns_it(tools):
+    assert resolve(tools, "key-late-0001").json() == {
+        "idempotency_key": "key-late-0001",
+        "status": "FAILED",
+    }
+    # The request that was lost in transit finally arrives: it must not execute.
+    late = execute(tools, DELETE_DOC_1, key="key-late-0001")
+    assert late.status_code == 409
+    assert late.json() == {"executed": False, "error": "abandoned"}
+    assert unchanged(tools)
+    assert resolve(tools, "key-late-0001").json()["status"] == "FAILED"
+    assert [e["status"] for e in tools.state.executions()] == ["FAILED"]
+
+
+def test_resolve_never_changes_an_existing_execution(tools):
+    execute(tools, REFUND_100, key="key-refund-01")
+    for _ in range(3):
+        assert resolve(tools, "key-refund-01", {"tool": "issue_refund", "resource_id": "acct_1"})
+    assert len(tools.state.snapshot()["refunds"]) == 1
+    assert execute(tools, REFUND_100, key="key-refund-01").status_code == 200  # stored result
+    assert len(tools.state.snapshot()["refunds"]) == 1
+
+
+def test_concurrent_resolve_and_execute_agree(tools):
+    def call(index):
+        if index % 2:
+            return resolve(
+                tools, "key-race-0001", {"tool": "issue_refund", "resource_id": "acct_1"}
+            )
+        return execute(tools, REFUND_100, key="key-race-0001")
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        list(pool.map(call, range(10)))
+    final = resolve(tools, "key-race-0001").json()["status"]
+    refunds = len(tools.state.snapshot()["refunds"])
+    assert (final, refunds) in {("EXECUTED", 1), ("FAILED", 0)}
+
+
+@pytest.mark.parametrize(
+    ("key", "body", "headers", "status"),
+    [
+        ("key-00000001", None, {}, 401),
+        ("key-00000001", None, bearer(TOOLS_ADMIN_TOKEN), 401),
+        ("short", None, AUTH, 404),
+        ("key-00000001", {"tool": "read_document", "resource_id": "doc_1"}, AUTH, 400),
+        ("key-00000001", {"tool": "drop_database", "resource_id": None}, AUTH, 400),
+        ("key-00000001", {"tool": "delete_document"}, AUTH, 400),
+        ("key-00000001", {"tool": "delete_document", "resource_id": 1}, AUTH, 400),
+        ("key-00000001", {"tool": "delete_document", "resource_id": "doc_1", "x": 1}, AUTH, 400),
+    ],
+)
+def test_invalid_resolve_requests_record_nothing(tools, key, body, headers, status):
+    assert resolve(tools, key, body, headers).status_code == status
+    assert tools.state.executions() == []

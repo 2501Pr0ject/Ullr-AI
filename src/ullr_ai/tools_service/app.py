@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from ullr_ai.asgi import bearer_token, error, new_app, token_matches
 from ullr_ai.gateway.canon import MAX_BYTES, CanonError, parse_json_strict
 from ullr_ai.gateway.schemas import SchemaError, parse_execution
-from ullr_ai.tools_service.executions import MUTATING_TOOLS, execute_mutation
+from ullr_ai.tools_service.executions import MUTATING_TOOLS, execute_mutation, resolve_execution
 from ullr_ai.tools_service.state import Seed, ToolsState
 
 _IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9_-]{8,64}")
@@ -72,6 +72,29 @@ def create_executor_app(
         if record is None:
             return error(404, "not_found")
         return JSONResponse(record)
+
+    @app.post("/v1/executions/{idempotency_key}/resolve")
+    async def resolve(idempotency_key: str, request: Request) -> JSONResponse:
+        """Definite status of a key; an unknown key is burned as failed."""
+        if not authorized(request):
+            return error(401, "unauthorized")
+        if _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None:
+            return error(404, "not_found")
+        try:
+            body = parse_json_strict(await request.body())
+        except CanonError:
+            return error(400, "invalid_request")
+        if (
+            type(body) is not dict
+            or set(body) != {"tool", "resource_id"}
+            or body["tool"] not in MUTATING_TOOLS
+            or not (body["resource_id"] is None or type(body["resource_id"]) is str)
+        ):
+            return error(400, "invalid_request")
+        status = await run_in_threadpool(
+            resolve_execution, state, idempotency_key, body["tool"], body["resource_id"]
+        )
+        return JSONResponse({"idempotency_key": idempotency_key, "status": status})
 
     return app
 

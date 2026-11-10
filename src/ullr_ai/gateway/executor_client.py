@@ -27,6 +27,7 @@ CONFIRMED_NOT_EXECUTED = frozenset(
         "not_found",
         "unknown_contact",
         "currency_mismatch",
+        "abandoned",
     }
 )
 
@@ -117,6 +118,29 @@ class ExecutorClient:
         ):
             return ToolsResult(False, error=body["error"])
         raise ToolsError("ambiguous outcome")
+
+    def resolve_execution(self, execution_id: str, tool: str, resource_id: str | None) -> str:
+        """Definite status of an execution: ``EXECUTED`` or ``FAILED``.
+
+        An execution the Tools service has never seen is abandoned there, so it
+        can no longer happen. Raises ToolsError if no definite answer is obtained.
+        """
+        try:
+            response = self._http.post(
+                f"/v1/executions/{execution_id}/resolve",
+                json={"tool": tool, "resource_id": resource_id},
+                headers=self._headers,
+            )
+        except httpx.HTTPError:
+            raise ToolsError("tools service unreachable") from None
+        body = self._json(response)
+        if (
+            response.status_code != 200
+            or body.get("idempotency_key") != execution_id
+            or body.get("status") not in ("EXECUTED", "FAILED")
+        ):
+            raise ToolsError("unexpected response")
+        return body["status"]
 
 
 def _sources(raw: Any) -> tuple[tuple[str, str], ...]:

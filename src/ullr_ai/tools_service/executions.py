@@ -29,6 +29,11 @@ MUTATING_TOOLS = frozenset(
 )
 
 
+# Marker stored instead of a request hash when a key was abandoned by its owner.
+ABANDONED = "abandoned"
+_ABANDONED_RESPONSE = {"executed": False, "error": "abandoned"}
+
+
 class Rejected(Exception):
     """The action was not executed, for a definite reason."""
 
@@ -52,6 +57,9 @@ def execute_mutation(
             (idempotency_key,),
         ).fetchone()
         if previous is not None:
+            if previous["request_hash"] == ABANDONED:
+                # The Gateway gave this key up before the request arrived.
+                return previous["http_status"], json.loads(previous["response"])
             if previous["request_hash"] != request_hash:
                 # Says nothing about whether the original request was executed.
                 return 409, {"executed": False, "error": "idempotency_key_reuse"}
@@ -160,3 +168,27 @@ def _check_version(row: sqlite3.Row | None, if_match: int) -> None:
         raise Rejected(404, "not_found")
     if row["version"] != if_match:
         raise Rejected(412, "precondition_failed")
+
+
+def resolve_execution(
+    state: ToolsState, idempotency_key: str, tool: str, resource_id: str | None
+) -> str:
+    """Give a definite answer about one idempotency key: ``EXECUTED`` or ``FAILED``.
+
+    If the key is unknown, it is recorded as failed in the same transaction, so
+    a request carrying it that arrives later is answered from that record and
+    never executes. After this call the key can no longer produce an effect.
+    """
+    with state.transaction() as conn:
+        previous = conn.execute(
+            "SELECT status FROM executions WHERE idempotency_key = ?", (idempotency_key,)
+        ).fetchone()
+        if previous is not None:
+            return previous["status"]
+        conn.execute(
+            "INSERT INTO executions"
+            " (idempotency_key, tool, resource_id, request_hash, status, http_status, response)"
+            " VALUES (?, ?, ?, ?, 'FAILED', 409, ?)",
+            (idempotency_key, tool, resource_id, ABANDONED, json.dumps(_ABANDONED_RESPONSE)),
+        )
+    return "FAILED"
