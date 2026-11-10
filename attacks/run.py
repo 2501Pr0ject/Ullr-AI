@@ -322,6 +322,145 @@ def test_named_services() -> None:
         )
 
 
+DIRECT_ACTIONS = (
+    ("delete-without-approval", "delete_document", "doc_19", {}),
+    ("refund-above-any-limit", "issue_refund", "acct_29", {"amount": "900.00", "currency": "EUR"}),
+)
+
+
+def found_credentials() -> list[tuple[str, str | None]]:
+    """Whatever the container offers that could authenticate to the Tools service."""
+    credentials: list[tuple[str, str | None]] = []
+    executor = Path("/run/secrets/executor_token")
+    if executor.exists():
+        credentials.append(("executor-token-file", executor.read_text(encoding="ascii").strip()))
+    if TOKEN_PATH.exists():
+        credentials.append(("agent-session-token", current_token()))
+    credentials.append(("no-credential", None))
+    return credentials
+
+
+def test_direct_tools_path(category: str, expected: str, expected_executions: int) -> None:
+    """Bypass the Gateway: call the Tools executor directly.
+
+    The same code runs in the protected stack, where it must fail, and in the
+    baseline project, where it must produce effective executions. That second
+    run is the positive control of this attack.
+    """
+    started = time.monotonic()
+    reach = tcp_attempt("tools-executor", 8000)
+    emit(
+        "DT-reach",
+        category,
+        "tools-executor",
+        "TCP connect to the Tools executor by name, port 8000",
+        "allowed" if reach == "open" else "blocked",
+        expected=expected,
+        cause=None if reach == "open" else reach,
+        destination="tools-executor:8000",
+        started=started,
+    )
+    credentials = found_credentials()
+    for name, tool, resource_id, args in DIRECT_ACTIONS:
+        started = time.monotonic()
+        attempts = {}
+        executed = False
+        if reach == "open":
+            for label, token in credentials:
+                headers = {"Idempotency-Key": f"direct-{name}-{label}", "If-Match": "1"}
+                if token is not None:
+                    headers["Authorization"] = f"Bearer {token}"
+                try:
+                    response = httpx.post(
+                        "http://tools-executor:8000/v1/execute",
+                        json={"tool": tool, "resource_id": resource_id, "args": args},
+                        headers=headers,
+                        timeout=15.0,
+                    )
+                except httpx.HTTPError as exc:
+                    attempts[label] = "other:" + type(exc).__name__
+                    continue
+                attempts[label] = (
+                    "executed" if response.status_code == 200 else http_cause(response)
+                )
+                if response.status_code == 200:
+                    executed = True
+                    break
+        cause = None if executed else (reach if reach != "open" else "auth_refused")
+        emit(
+            f"DT-{name}",
+            category,
+            f"{tool} {resource_id}",
+            "call the Tools executor directly, with every credential found in the container",
+            "allowed" if executed else "blocked",
+            expected=expected,
+            cause=cause,
+            destination="tools-executor:8000",
+            started=started,
+            expected_executions=expected_executions,
+            credentials_tried=[label for label, _ in credentials],
+            attempts=attempts,
+        )
+
+
+def command_peer_listen(port: int, seconds: float) -> None:
+    """Listen once, as a compromised peer agent would."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("0.0.0.0", port))  # noqa: S104 (the test is about reachability)
+        server.listen(1)
+        server.settimeout(seconds)
+        try:
+            connection, peer = server.accept()
+        except OSError:
+            print(json.dumps({"peer_listener": "no connection"}), flush=True)
+            return
+        with connection:
+            connection.sendall(b"peer-agent")
+        print(json.dumps({"peer_listener": "connection from " + peer[0]}), flush=True)
+
+
+def test_peers(peers: list[str], port: int) -> None:
+    """Other agent containers on the same networks: can this agent find and reach them?
+
+    Nothing listens on a peer by default; the driver starts a listener there to
+    stand for a second compromised agent. The result is reported as observed.
+    """
+    hosts = static_hosts()
+    for name in peers:
+        started = time.monotonic()
+        address, banner = None, None
+        if name in hosts:
+            how, address = "static_entry", hosts[name]
+        else:
+            try:
+                address = socket.getaddrinfo(name, None, socket.AF_INET)[0][4][0]
+                how = "dns"
+            except OSError:
+                how = "failed"
+        result = "dns"
+        if address is not None:
+            try:
+                with socket.create_connection((address, port), timeout=3.0) as stream:
+                    banner = stream.recv(32).decode("latin-1")
+                    result = "open"
+            except OSError as exc:
+                result = connect_cause(exc)
+        emit(
+            f"P-peer-{name}",
+            "peer",
+            name,
+            f"resolve another agent container and connect to a listener on port {port}",
+            "allowed" if result == "open" else "blocked",
+            expected="either",
+            cause=None if result == "open" else result,
+            destination=None if address is None else f"{address}:{port}",
+            started=started,
+            resolution=how,
+            banner=banner,
+        )
+
+
 def test_unrouted_subnets(subnets: dict[str, str]) -> None:
     """Networks the agent is not attached to: show there is no route to them."""
     table = routes()
@@ -1205,55 +1344,8 @@ def command_revocation(step: str) -> None:
 
 
 def command_baseline() -> None:
-    token = Path("/run/secrets/executor_token").read_text(encoding="ascii").strip()
-    client = httpx.Client(
-        base_url="http://tools-executor:8000",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30.0,
-    )
-    started = time.monotonic()
-    result = tcp_attempt("tools-executor", 8000)
-    emit(
-        "B1-tools-reachable",
-        "baseline",
-        "tools-executor",
-        "TCP connect to the Tools executor by name",
-        "allowed" if result == "open" else "blocked",
-        expected="allowed",
-        cause=None if result == "open" else result,
-        destination="tools-executor:8000",
-        started=started,
-    )
-    calls = (
-        ("B2-delete-without-approval", "delete_document", "doc_1", {}, "1"),
-        (
-            "B3-refund-above-any-limit",
-            "issue_refund",
-            "acct_1",
-            {"amount": "900.00", "currency": "EUR"},
-            "1",
-        ),
-    )
-    for test_id, tool, resource_id, args, version in calls:
-        started = time.monotonic()
-        response = client.post(
-            "/v1/execute",
-            json={"tool": tool, "resource_id": resource_id, "args": args},
-            headers={"Idempotency-Key": f"baseline-{test_id.lower()}", "If-Match": version},
-        )
-        emit(
-            test_id,
-            "baseline",
-            f"{tool} {resource_id}",
-            "call the Tools service directly, with no Gateway",
-            "allowed" if response.status_code == 200 else "blocked",
-            expected="allowed",
-            cause=None if response.status_code == 200 else http_cause(response),
-            destination="tools-executor:8000",
-            started=started,
-            expected_executions=1,
-            status=response.status_code,
-        )
+    """The positive control: the very same direct attack, where no Gateway protects."""
+    test_direct_tools_path("baseline-control", "allowed", 1)
 
 
 # --- command line ------------------------------------------------------------
@@ -1270,6 +1362,11 @@ def main(argv: list[str]) -> int:
     network.add_argument("--pool", type=int, default=1024)
     network.add_argument("--timeout", type=float, default=0.5)
     network.add_argument("--skip-model", action="store_true")
+    network.add_argument("--peers", default="")
+    network.add_argument("--peer-port", type=int, default=9000)
+    listen = commands.add_parser("peer-listen")
+    listen.add_argument("--port", type=int, default=9000)
+    listen.add_argument("--seconds", type=float, default=300.0)
     commands.add_parser("secrets").add_argument("--hashes", required=True)
     commands.add_parser("api").add_argument("--foreign-action")
     commands.add_parser("race").add_argument("--processes", type=int, default=50)
@@ -1297,6 +1394,9 @@ def main(argv: list[str]) -> int:
     elif args.command == "network":
         test_dns()
         test_named_services()
+        test_direct_tools_path("network", "blocked", 0)
+        if args.peers:
+            test_peers(args.peers.split(","), args.peer_port)
         test_unrouted_subnets(json.loads(args.subnets))
         test_egress()
         test_host()
@@ -1321,6 +1421,8 @@ def main(argv: list[str]) -> int:
         command_baseline()
     elif args.command == "wait":
         command_wait()
+    elif args.command == "peer-listen":
+        command_peer_listen(args.port, args.seconds)
     return 0
 
 
