@@ -110,7 +110,8 @@ def bearer_token(request: Request) -> str | None:
     return header[len("Bearer ") :]
 
 
-def token_matches(presented: str | None, expected: str) -> bool:
-    if presented is None:
+def token_matches(presented: str | None, expected: str | None) -> bool:
+    """Constant-time comparison. A process that does not hold the token refuses everything."""
+    if presented is None or not expected:
         return False
     return hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
