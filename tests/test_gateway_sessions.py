@@ -1,6 +1,7 @@
 """Session issuance, session isolation and provenance laundering (T6, T12, H2)."""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -19,12 +20,14 @@ from conftest import (
     pending_requests,
     propose,
     provenance_of,
+    revocation_order_violations,
     rows,
     status_of,
 )
 from test_gateway_api import forwarding_transport
 from ullr_ai import storage
 from ullr_ai.gateway import app as gateway_app
+from ullr_ai.tools_service.state import Seed
 
 ADMIN = bearer(GATEWAY_ADMIN_TOKEN)
 REFUND = {"amount": "100.00", "currency": "EUR"}
@@ -495,23 +498,168 @@ def test_revocation_after_authentication_blocks_an_approved_execution(env, monke
     assert env.tools.state.snapshot()["refunds"] == []
 
 
-def test_execution_already_recorded_before_revocation_completes(make_env, tools):
-    """The intent was committed while the session was valid: it is not a new action."""
+def test_action_authorized_before_revocation_may_take_effect_after_it(make_env, tools):
+    """Authorization and effect are two different moments.
+
+    The action's authorization transaction commits while the session is valid.
+    The revocation then commits, before the Tools service has done anything.
+    The effect in the Tools service happens after the revocation: this is
+    permitted, and it is not an action executed before revocation.
+    """
     holder = {}
 
-    def revoke_during_execution(request):
+    def revoke_before_the_tools_effect(request):
         if request.url.path == "/v1/execute":
-            assert revoke(holder["env"], holder["session"]).status_code == 200
+            env = holder["env"]
+            # At this point the intent is recorded and the Tools service has not acted.
+            assert statuses_of_all(env) == ["EXECUTING"]
+            assert tools.state.snapshot()["documents"][0]["content"] == "Revenue grew."
+            assert revoke(env, holder["session"]).status_code == 200
+            holder["revoked_before_effect"] = (
+                rows(env, "SELECT revoked_at FROM sessions")[0]["revoked_at"] is not None
+            )
 
-    client, _ = forwarding_transport(tools, before=revoke_during_execution)
+    client, _ = forwarding_transport(tools, before=revoke_before_the_tools_effect)
     env = holder["env"] = make_env(tools_http=client)
     holder["session"], agent = new_session(env)
     response = propose(env, agent, "update_document", "doc_1", {"content": "v2"})
+
+    assert holder["revoked_before_effect"] is True
     assert response.status_code == 200
     assert statuses_of_all(env) == ["COMMITTED"]
-    # Nothing new starts afterwards.
+    assert tools.state.snapshot()["documents"][0]["content"] == "v2"  # effect after revocation
+
+    order = [e["type"] for e in audit_events(env) if e["type"] != "SESSION_CREATED"]
+    assert order == ["PROPOSED", "ALLOWED", "EXECUTING", "SESSION_REVOKED", "COMMITTED"]
+    assert revocation_order_violations(audit_events(env)) == []
+
+    # Nothing new is authorized afterwards.
     assert propose(env, agent, "update_document", "doc_1", {"content": "v3"}).status_code == 401
     assert tools.state.snapshot()["documents"][0]["content"] == "v2"
+
+
+def test_audit_order_invariant_detects_an_authorization_after_revocation():
+    """The invariant itself: it must flag the ordering the Gateway must never produce."""
+    events = [
+        {"seq": 1, "type": "SESSION_CREATED", "session_id": "s1"},
+        {"seq": 2, "type": "PROPOSED", "session_id": "s1", "action_id": "a1"},
+        {"seq": 3, "type": "EXECUTING", "session_id": "s1", "action_id": "a1"},
+        {"seq": 4, "type": "SESSION_REVOKED", "session_id": "s1"},
+        {"seq": 5, "type": "COMMITTED", "session_id": "s1", "action_id": "a1"},
+        {"seq": 6, "type": "PROPOSED", "session_id": "s2", "action_id": "b1"},
+    ]
+    assert revocation_order_violations(events) == []
+    late = {"seq": 7, "type": "EXECUTING", "session_id": "s1", "action_id": "a2"}
+    assert revocation_order_violations([*events, late]) == [late]
+    proposed = {"seq": 8, "type": "PROPOSED", "session_id": "s1", "action_id": "a3"}
+    assert revocation_order_violations([*events, proposed]) == [proposed]
+
+
+def test_revocation_racing_concurrent_requests(make_env, tools):
+    """Threads propose reversible writes while the session is revoked under them.
+
+    The revocation is committed while execute calls are in flight: it is issued
+    from inside the Tools transport when the nth execute call arrives, so that
+    call's effect is certain to follow the revocation, while the other threads
+    race freely. Each request carries a unique marker as its content. Afterwards:
+    - a request whose authorization transaction was rejected (HTTP 401) left no
+      action in the Gateway and never reached the Tools service's execute route;
+    - a request authorized before the revocation is recorded, and at least one
+      such action took effect after the revocation, which is permitted;
+    - the audit order shows no authorization after the revocation.
+    """
+    documents = [
+        {"id": f"doc_{n}", "title": "t", "content": "seed", "trust_label": "internal"}
+        for n in range(1, 41)
+    ]
+    for round_number, revoke_at_call in enumerate((1, 4, 10, 20)):
+        tools.state.reset(Seed.model_validate({"documents": documents}))
+        client, _ = forwarding_transport(tools)
+        seen_by_tools = []
+        context = {}
+        lock = threading.Lock()
+        original_send = client._transport.handle_request
+
+        def recording(
+            request,
+            send=original_send,
+            seen=seen_by_tools,
+            ctx=context,
+            lock=lock,
+            nth=revoke_at_call,
+        ):
+            if request.url.path == "/v1/execute":
+                with lock:
+                    seen.append(request.content.decode())
+                    trigger = len(seen) == nth
+                if trigger:
+                    # Committed before this call, and any later one, reaches the Tools service.
+                    assert revoke(ctx["env"], ctx["session"]).status_code == 200
+            return send(request)
+
+        client._transport.handle_request = recording
+        env = context["env"] = make_env(tools_http=client)
+        session_id, agent = new_session(env)
+        context["session"] = session_id
+        start = threading.Barrier(8)
+        results = []
+
+        def worker(index, env=env, agent=agent, start=start, results=results, rnd=round_number):
+            start.wait()
+            for step in range(5):
+                marker = f"marker-r{rnd}-w{index}-s{step}"
+                document = f"doc_{index * 5 + step + 1}"
+                response = propose(env, agent, "update_document", document, {"content": marker})
+                results.append((marker, response.status_code))
+
+        threads = [threading.Thread(target=worker, args=(index,)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=60)
+        assert len(results) == 40
+
+        # The Gateway database is shared by every round: look at this round's session only.
+        all_events = audit_events(env)
+        assert revocation_order_violations(all_events) == []
+        events = [e for e in all_events if e.get("session_id") == session_id]
+
+        rejected = [marker for marker, status in results if status == 401]
+        authorized = [marker for marker, status in results if status != 401]
+        assert rejected, "no request was rejected: the revocation was not exercised"
+        assert authorized, "no request was authorized before the revocation"
+
+        recorded = {
+            row["args"]
+            for row in rows(env, "SELECT args FROM actions WHERE session_id = ?", (session_id,))
+        }
+        final_contents = {d["content"] for d in tools.state.snapshot()["documents"]}
+        for marker in rejected:
+            # Rejected after revocation: absent from the Gateway and from the Tools service.
+            assert not any(marker in args for args in recorded)
+            assert not any(marker in body for body in seen_by_tools)
+            assert marker not in final_contents
+        for marker in authorized:
+            # Authorized before revocation: recorded, and allowed to complete.
+            assert any(marker in args for args in recorded)
+
+        # Every execute call the Tools service received in this round belongs to an
+        # action of this session whose EXECUTING event precedes the revocation in
+        # the audit order.
+        revoked_seq = next(e["seq"] for e in events if e["type"] == "SESSION_REVOKED")
+        executing = {e["action_id"]: e["seq"] for e in events if e["type"] == "EXECUTING"}
+        assert len(seen_by_tools) == len(executing) >= revoke_at_call
+        assert all(seq < revoked_seq for seq in executing.values())
+        outcomes = [e for e in events if e["type"] in ("COMMITTED", "FAILED", "UNKNOWN")]
+        assert len(outcomes) == len(executing)
+
+        # Authorization and effect are distinct: at least the call that triggered
+        # the revocation took effect in the Tools service after the revocation.
+        completed_after = [e for e in outcomes if e["seq"] > revoked_seq]
+        assert completed_after
+        assert all(e["type"] == "COMMITTED" for e in completed_after)
+        executed_markers = [m for m in authorized if m in final_contents]
+        assert len(executed_markers) == len(tools.state.executions()) == len(executing)
 
 
 def statuses_of_all(env):

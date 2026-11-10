@@ -250,3 +250,24 @@ def approved(env, headers, tool, resource_id=None, args=None):
 
 def status_of(env, action_id):
     return rows(env, "SELECT status FROM actions WHERE action_id = ?", (action_id,))[0]["status"]
+
+
+def revocation_order_violations(events):
+    """Audit-order invariant for revocation.
+
+    The audit sequence is the commit order of the Gateway's write transactions.
+    For a revoked session, no action may be proposed or enter EXECUTING after
+    the SESSION_REVOKED event: such an event would mean an authorization
+    transaction committed after the revocation. Events that only record the
+    outcome of an earlier authorization (COMMITTED, FAILED, UNKNOWN) may follow.
+    """
+    revoked_at = {
+        event["session_id"]: event["seq"] for event in events if event["type"] == "SESSION_REVOKED"
+    }
+    return [
+        event
+        for event in events
+        if event["type"] in ("PROPOSED", "ALLOWED", "PENDING_APPROVAL", "APPROVED", "EXECUTING")
+        and event.get("session_id") in revoked_at
+        and event["seq"] > revoked_at[event["session_id"]]
+    ]
