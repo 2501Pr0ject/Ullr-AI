@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.2. Since v1.1: topology by authorized clients with separate Gateway and Tools containers, the LLM relay contract, token handover and revocation, SQLite settings (§3), and reconciliation running only in the Gateway API process (§8). The stack and the scripted attacker are implemented; no run across the isolation boundary has completed yet.
+Status: v1.3. Since v1.2: the revocation guarantee stated on commit order (§8); deployment properties in §3 worded as configuration, since none has been verified from inside the containers except the relay's start-up check. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
 
 ## 1. Design principles
 
@@ -49,11 +49,13 @@ Status: v1.2. Since v1.1: topology by authorized clients with separate Gateway a
 
 ## 3. Network and hardening
 
-The diagram in §2 shows the logical components. The deployment splits them into nine containers so that reachability follows from network membership: a container that holds a privileged credential shares no network with the agent, except the agent-facing Gateway API.
+The diagram in §2 shows the logical components. The deployment is configured as nine containers so that reachability is meant to follow from network membership: the configuration gives a container that holds a privileged credential no network in common with the agent, except the agent-facing Gateway API.
+
+This section describes the Compose configuration and the intent behind it. It is not a verified property of a running system: apart from the relay's start-up check, nothing here has been observed from inside the containers, and the scripted attacker has not completed a run.
 
 ### Topology by authorized clients
 
-| Container | Networks | Authorized clients | Enforced by |
+| Container | Networks | Authorized clients | Intended enforcement |
 |---|---|---|---|
 | `agent` (untrusted) | `net_agent`, `net_llm` | none | — |
 | `gateway-api` | `net_agent`, `net_tools` | agent | session token; the only Gateway process with Tools access |
@@ -65,9 +67,10 @@ The diagram in §2 shows the logical components. The deployment splits them into
 | `controller` | `net_admin`, `net_control` | none | — |
 | `llm-relay` | `net_llm`, `net_egress` | agent | relay contract below |
 
-- Every network is `internal: true` except `net_egress`, which only the relay joins. No port is published on the host, no service uses a default network, and no container mounts the Docker socket.
+- Every network is declared `internal: true` except `net_egress`, which only the relay joins. The configuration publishes no port on the host, uses no default network, and mounts the Docker socket nowhere.
 - Each container runs one application on one port. `gateway-api` contains no client for the admin or approver applications and relays nothing to them.
-- The three Gateway containers share one SQLite database on a named volume; the two Tools containers share another. The agent mounts neither.
+- The three Gateway containers share one SQLite database on a named volume; the two Tools containers share another. The agent is given neither.
+- The agent containers used for multi-agent tests share `net_agent` and `net_llm`, so they are expected to be able to reach each other. A compromised agent could pass content or its session token to another one, outside the Gateway's view (see `THREAT_MODEL.md` §9).
 - All containers: Python 3.12 image pinned by digest, fixed non-root user, `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, a small tmpfs for `/tmp`.
 
 ### Secrets
@@ -87,7 +90,7 @@ The Gateway receives only the public approver registry.
 
 ### Episode token
 
-The controller creates a session and writes its token to a volume that it mounts read-write and the agent mounts read-only. There is no network path between the two. At the end of the episode the controller revokes the session; the file is then replaced atomically by the next token, so the volume holds one token. Revocation is enforced by the Gateway, not by removing the file (§8).
+The controller creates a session and writes its token to a volume that it mounts read-write and the agent mounts read-only. The configuration gives the two no network in common. At the end of the episode the controller revokes the session; the file is then replaced atomically by the next token, so the volume holds one token. Revocation is enforced by the Gateway, not by removing the file (§8).
 
 ### LLM relay
 
@@ -99,7 +102,7 @@ The model runs on the host, bound to its loopback interface. The agent reaches i
 - destination: fixed in the relay's configuration. There is no destination parameter, no generic proxying, no redirect following;
 - `/api/pull`, `/api/push`, `/api/create`, `/api/delete`, `/api/copy` and the other model-management routes are refused explicitly; any other route does not exist.
 
-At start-up the relay checks that the upstream answers and serves the allowed model, and logs the model's digest. `net_egress` is an additional trust boundary: the relay is the one container with a route out, so a compromised relay is an egress path.
+At start-up the relay checks that the upstream answers and serves the allowed model, and logs the model's digest; this check has run in a container. `net_egress` is an additional trust boundary: the relay is configured as the one container with a route out, so a compromised relay is an egress path.
 
 ### SQLite
 
@@ -245,7 +248,7 @@ Budget reservation:  RESERVED → COMMITTED
 
 ### Sessions
 
-A session is created, and later revoked, by a trusted party (the benchmark controller here, an orchestrator in production) through an admin-only Gateway application, on a network and with a credential the agent container never has. A revoked session stays revoked; its pending and approved actions are invalidated. Revocation is checked against the database on every request, again inside the transaction that would record or consume anything: once a revocation is committed, a request already in progress authorizes and executes nothing new. The endpoint returns an agent token bound to exactly one `session_id` and one `agent_id`. The agent API offers no way to create a session, switch session, or reset provenance: otherwise an agent could read injected content in one session and propose the resulting action from a clean one.
+A session is created, and later revoked, by a trusted party (the benchmark controller here, an orchestrator in production) through an admin-only Gateway application, on a network and with a credential the agent container never has. A revoked session stays revoked; its pending and approved actions are invalidated. Revocation is checked against the database on every request, and again inside the transaction that would record or consume anything. The guarantee is stated on the commit order of Gateway transactions: no action whose authorization transaction commits after the revocation commits is authorized, consumed or sent to the Tools service. An action whose authorization transaction committed before the revocation may complete: its call to the Tools service, its effect there, and for a read the return of the content, can all happen after the revocation. Such an action was authorized before the revocation; its effect was not necessarily produced before it. One limitation in flight: a mutating request that is revoked between its first check and its transaction can still learn, from the resource lookup, whether a resource exists.
 
 ### Steps
 
@@ -289,7 +292,7 @@ For the comparative experiment, the agent gets a direct client to the Tools exec
 
 ## 11. Guarantee map
 
-| Goal | Enforced by |
+| Goal | Mechanisms (what is verified for each: `EVIDENCE.md`) |
 |---|---|
 | G1 | Tiering, signed decision checks (§7), execution transaction (§8.4), network isolation (§3) |
 | G2 | `action_hash`, `resource_version`, `policy_hash`, `provenance_version`, single-use consumption |
