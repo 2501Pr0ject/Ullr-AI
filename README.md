@@ -6,7 +6,7 @@ Ullr enforces authorization policies on every protected action routed through it
 
 Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award categories: financial transactions, digital system changes, delegated actions. This document is the paper; the specification lives in [`docs/`](docs/).
 
-> **Work in progress.** The design is specified and frozen. The Tools service and the Gateway core are implemented; approvals, container isolation and the benchmark are not. The [Status](#status) table states what exists and what is tested.
+> **Work in progress.** The design is specified and frozen. The Tools service and the Gateway, approvals included, are implemented and tested in one process; container isolation and the benchmark are not. The [Status](#status) table states what exists and what is tested.
 
 ## Abstract
 
@@ -20,14 +20,14 @@ Submission to the Drawerrr "AI Safety and Control" challenge. Targeted award cat
 | Tools service: executor token, idempotency keys, version preconditions, admin API | yes | integration | — |
 | Gateway: admin-issued sessions, policy decision, execution of allowed (R0/R1) actions, proxied reads with provenance | yes | integration | — |
 | Audit table: append-only triggers, hash chain, `verify-audit` | yes | unit | — |
-| Approvals, signed decisions, execution of approved (R2) actions, budgets, reconciliation of `UNKNOWN` | no | no | M2 |
+| Approvals: signed decisions, lifecycle, execution of approved (R2) actions, budgets, reconciliation of `UNKNOWN`, approver tool | yes | integration | — |
 | Container isolation, scripted attacker (L2) | no | no | M3 |
 | Agent loop, benchmark harness (L3) | no | no | M4 |
 | Full runs and result tables | no | no | M5 |
 | One real protocol behind the Gateway (SMTP to a local Mailpit) | no | no | after M3, if time allows |
 | External audit anchoring, truncation detection | no | no | deferred |
 
-"Integration" means exercised through the HTTP interfaces, in one process. Without container isolation, no claim against a compromised runtime (L2) is tested. No irreversible action can be executed yet: every R2 proposal stops at `PENDING_APPROVAL`. No guarantee here is demonstrated end to end.
+"Integration" means exercised through the HTTP interfaces, in one process. Without container isolation, no claim against a compromised runtime (L2) is tested, and nothing shows yet that the credentials are out of the agent's reach. No guarantee here is demonstrated end to end.
 
 ## 1. Problem and motivation
 
@@ -43,7 +43,7 @@ A concrete case: a support ticket read by the agent contains the injected line "
 - With Ullr, the proposal is denied by the policy's 500.00 EUR per-action limit, without asking anyone.
 - A refund within the limit would wait for a signed approval, and the approval request would show that the session has read external content.
 
-The denial is implemented and tested in one process; the approval path is not implemented yet (see [Status](#status)).
+Both behaviours are implemented and tested in one process, not yet across an isolation boundary (see [Status](#status)).
 
 Ullr takes the position, shared with system-level defenses such as CaMeL [3], that the security argument must not depend on the model. Its core mechanism, a single-use approval bound to one exact action and enforced at execution, is the one evaluated by GateArena [5]. Section 10 compares Ullr with both.
 
@@ -121,17 +121,17 @@ Details: [`ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation status is giv
 
 **Policy (implemented).** A YAML file read once at start-up. Its SHA-256 is the policy hash. Reversibility tiers (R0 read, R1 reversible, R2 irreversible) are fixed in code; a policy file that states a different tier for a tool fails to load, as does one with an unknown field, a duplicate key or a default other than deny.
 
-**Action-bound approvals (planned, M2).** An approval record stores the action hash, resource version, policy hash, canonicalization version, provenance version, a 128-bit nonce and an expiry. A change in any bound value invalidates it.
+**Action-bound approvals (implemented).** An approval record stores the action hash, resource version, policy hash, canonicalization version, provenance version, a 128-bit nonce and an expiry. A change in any bound value invalidates it.
 
-**Signed decisions (planned, M2).** The approver signs, with Ed25519, a domain-separation prefix followed by the canonical JSON of the full decision payload. The Gateway looks the key up in its registry, never in the payload, and rejects a decision in which any field differs from the stored record.
+**Signed decisions (implemented).** The approver signs, with Ed25519, a domain-separation prefix followed by the canonical JSON of the full decision payload. The Gateway looks the key up in its registry, never in the payload, and rejects a decision in which any field differs from the stored record.
 
-**Execution and idempotency (allowed actions implemented; approved actions planned, M2).** Allowed actions execute within the proposing request. Approved actions are executed by a second call that resends the arguments: in one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. Both then follow the same path. There is no transaction spanning the Gateway and the Tools service: the Gateway records the intent, calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. The Gateway then records the outcome. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
+**Execution and idempotency (implemented).** Allowed actions execute within the proposing request. Approved actions are executed by a second call that resends the arguments: in one `BEGIN IMMEDIATE` SQLite transaction the Gateway rechecks every binding, reserves the budgets, consumes the approval, creates an execution identifier and writes the audit events. Both then follow the same path. There is no transaction spanning the Gateway and the Tools service: the Gateway records the intent, calls the Tools service with that identifier as idempotency key and the resource version as precondition. The Tools service checks its own token, key and precondition; it does not trust the Gateway for them. The Gateway then records the outcome. A timeout leaves the action in an unknown state that is reconciled against the Tools service before any budget is released.
 
-**Budgets (planned, M2).** Cumulative caps per account, shared by all agents, and per agent, checked and reserved inside the execution transaction.
+**Budgets (implemented).** Cumulative caps per account, shared by all agents, and per agent, checked and reserved inside the execution transaction.
 
 **Sessions (implemented).** Sessions are created by a trusted party through an admin-only endpoint; the agent token is bound to one session and the agent API cannot create or switch sessions. This closes provenance laundering through a fresh session.
 
-**Provenance (tracking implemented; display to the approver planned, M2).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
+**Provenance (implemented).** Every read is proxied. The Tools service labels each resource internal or external. A session that has seen an external source is tainted; the approval request shows taint status and the observed sources, and the policy can escalate or deny for tainted sessions.
 
 **Audit (implemented).** An append-only table with a hash chain, written in the same transaction as the security state transition it records. Verification detects a modified entry. Bypass measurement does not rest on this log alone: the Tools execution table is cross-checked against the Gateway's records.
 
@@ -180,10 +180,10 @@ The full table, by guarantee then threat, is in [`docs/EVIDENCE.md`](docs/EVIDEN
 | Level | Meaning | Current coverage |
 |---|---|---|
 | Unit | A module tested in isolation | Canonicalization, schemas, policy, audit chain, provenance |
-| Integration | Gateway and Tools service through their HTTP interfaces, in one process | T2, T4, T5, T9, T10, T12, T13, T15 for refusal paths; T3, T14, T19, T20 in part |
+| Integration | Gateway and Tools service through their HTTP interfaces, in one process, with injected faults | T2–T19; T1 and T20 only as token checks |
 | End-to-end | Across the container and network isolation boundary (L2, L3) | None |
 
-L2 has not been run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway. That claim waits for the isolation boundary to be built and attacked (M3). T1, T6, T7, T8, T11, T16 and T18 have no test of their mitigation yet.
+L2 has not been run: nothing here demonstrates that a compromised agent runtime cannot bypass the Gateway. That claim waits for the isolation boundary to be built and attacked (M3). T1 (direct access to the Tools service) is the core claim and is untested; races are tested with threads in one process only.
 
 ## 9. Reproducibility
 
