@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.3. Since v1.2: the revocation guarantee stated on commit order (§8); deployment properties in §3 worded as configuration, since none has been verified from inside the containers except the relay's start-up check. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
+Status: v1.4. Since v1.3: the agent networks carry no host-side IPv4 address (§3), after the first L2 run found host services reachable there; §3 states what L2 run 2 observed. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
 
 ## 1. Design principles
 
@@ -51,7 +51,7 @@ Status: v1.3. Since v1.2: the revocation guarantee stated on commit order (§8);
 
 The diagram in §2 shows the logical components. The deployment is configured as nine containers so that reachability is meant to follow from network membership: the configuration gives a container that holds a privileged credential no network in common with the agent, except the agent-facing Gateway API.
 
-This section describes the Compose configuration and the intent behind it. It is not a verified property of a running system: apart from the relay's start-up check, nothing here has been observed from inside the containers, and the scripted attacker has not completed a run.
+This section describes the Compose configuration and the intent behind it. The second L2 run attacked it from inside the agent container and passed, with passing positive controls: one run, on one Docker Desktop version, by TCP connect and DNS from one agent container. What that run attempted, and what it did not, is in [`EVIDENCE.md`](EVIDENCE.md). The description below remains a configuration, not a proof of isolation.
 
 ### Topology by authorized clients
 
@@ -68,6 +68,7 @@ This section describes the Compose configuration and the intent behind it. It is
 | `llm-relay` | `net_llm`, `net_egress` | agent | relay contract below |
 
 - Every network is declared `internal: true` except `net_egress`, which only the relay joins. The configuration publishes no port on the host, uses no default network, and mounts the Docker socket nowhere.
+- The two agent networks set `com.docker.network.bridge.inhibit_ipv4`, so that the Docker host has no IPv4 address on them. The first L2 run found that, without it, the agent could reach services of the Docker Desktop virtual machine (`rpcbind`, `rpc.statd`) through the bridge address. The five other networks keep a host address; only trusted containers are attached to them.
 - Each container runs one application on one port. `gateway-api` contains no client for the admin or approver applications and relays nothing to them.
 - The three Gateway containers share one SQLite database on a named volume; the two Tools containers share another. The agent is given neither.
 - The agent containers used for multi-agent tests share `net_agent` and `net_llm`, so they are expected to be able to reach each other. A compromised agent could pass content or its session token to another one, outside the Gateway's view (see `THREAT_MODEL.md` §9).
