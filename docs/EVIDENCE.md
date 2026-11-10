@@ -1,6 +1,6 @@
 # Evidence
 
-What is tested, at which level, for each security goal (G1–G7) and each threat (T1–T20) of [`THREAT_MODEL.md`](THREAT_MODEL.md). Updated at every milestone. Current state: end of M2.
+What is tested, at which level, for each security goal (G1–G7) and each threat (T1–T20) of [`THREAT_MODEL.md`](THREAT_MODEL.md). Updated at every milestone. Current state: M3 in progress. The stack and the scripted attacker are implemented; the first L2 run has not completed.
 
 ## Evidence levels
 
@@ -10,7 +10,7 @@ What is tested, at which level, for each security goal (G1–G7) and each threat
 | **Integration** | The Gateway and the Tools service exercised through their HTTP interfaces, in one process. No network, no container, no separate credential store. Faults (timeouts, crashes, audit failures) are injected through the test transport or the database. |
 | **End-to-end** | A test that crosses the actual container and network isolation boundary: the scripted attacker (L2) or the agent benchmark (L3). |
 
-**No end-to-end evidence exists yet.** The Docker stack and the scripted attacker are M3. Until L2 has run, this project does not demonstrate that a compromised agent runtime cannot bypass the Gateway. Integration evidence shows that the components refuse what they should refuse when reached through their interfaces; it says nothing about whether those interfaces are the only way in, nor about whether the credentials are out of the agent's reach.
+**No end-to-end evidence exists yet**, apart from the start-up check of the LLM relay described at the end. Until L2 has run, this project does not demonstrate that a compromised agent runtime cannot bypass the Gateway. Integration evidence shows that the components refuse what they should refuse when reached through their interfaces; it says nothing about whether those interfaces are the only way in, nor about whether the credentials are out of the agent's reach.
 
 Test paths are relative to `tests/`. Reproduce with `make test`.
 
@@ -40,7 +40,7 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
-| T8 Split transactions | Three refunds of 400.00 against the 1000.00 account cap: the third is refused. The account cap is reached through two agents that each stay under their own cap. The per-agent cap is reached across accounts and across sessions. Six concurrent refunds by one agent never exceed its cap. A refused refund reserves nothing and does not consume its approval. | `test_budget.py::test_three_refunds_of_400_against_the_account_cap`, `::test_account_cap_is_reached_through_two_agents`, `::test_agent_cap_is_reached_across_accounts`, `::test_agent_cap_follows_the_agent_across_sessions`, `::test_concurrent_refunds_never_exceed_the_agent_cap`, `::test_concurrent_refunds_from_two_agents_on_one_account` | Integration (threads, one process) | Concurrent refunds from two agent containers (L2) |
+| T8 Split transactions | Three refunds of 400.00 against the 1000.00 account cap: the third is refused. The account cap is reached through two agents that each stay under their own cap. The per-agent cap is reached across accounts and across sessions. Six concurrent refunds by one agent never exceed its cap. A refused refund reserves nothing and does not consume its approval. | `test_budget.py::test_three_refunds_of_400_against_the_account_cap`, `::test_account_cap_is_reached_through_two_agents`, `::test_agent_cap_is_reached_across_accounts`, `::test_agent_cap_follows_the_agent_across_sessions`, `::test_concurrent_refunds_never_exceed_the_agent_cap`, `::test_three_agents_race_for_one_account_budget` | Integration (threads, one process) | Concurrent refunds from two agent containers (L2) |
 
 ## G4 — Failures do not execute; ambiguous outcomes stay reserved
 
@@ -59,27 +59,42 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
-| T12 Forged or laundered provenance | Taint derives only from Tools-assigned labels and is permanent. Claims in the body, the arguments or the reason are rejected or ignored. The agent API has two routes and none creates, switches or resets a session; identity comes from the token. The laundering scenario (tainted session A, clean session B) fails. Session and provenance rows cannot be rewritten in the database. | `test_gateway_sessions.py`, `test_provenance.py`, `test_audit.py::test_session_and_provenance_history_cannot_be_rewritten`, `test_tools_executor.py::test_an_update_cannot_change_the_trust_label` | Unit, integration | Session-creation credential unreachable from the agent container (M3, L2). Cross-session agent memory is out of scope (H7). |
+| T12 Forged or laundered provenance | Taint derives only from Tools-assigned labels and is permanent. Claims in the body, the arguments or the reason are rejected or ignored. The agent API has two routes and none creates, switches or resets a session; identity comes from the token. The laundering scenario (tainted session A, clean session B) fails. Session and provenance rows cannot be rewritten in the database. A revoked token is refused on every route, before and after the next token is issued; a revocation committed while a request is in progress wins, and that request records, consumes and executes nothing. | `test_gateway_sessions.py`, `test_provenance.py`, `test_audit.py::test_session_and_provenance_history_cannot_be_rewritten`, `test_tools_executor.py::test_an_update_cannot_change_the_trust_label` | Unit, integration | Session-creation credential unreachable from the agent container (M3, L2). Cross-session agent memory is out of scope (H7). |
 | T11 Plausible injected request accepted by the approver | The approval request carries the Gateway-derived taint status and sources, and the agent's reason under an "unverified" label; the approver tool shows taint before the reason, escapes it, and refuses to sign if the displayed action does not hash to the action hash. | `test_approvals.py::test_request_shows_the_action_and_gateway_derived_provenance`, `test_approver_cli.py::test_request_display_states_taint_and_marks_the_reason_unverified`, `::test_tool_refuses_to_sign_when_the_display_does_not_match_the_hash` | Integration | Whether an approver's decisions change is an L3 question (approver profiles); no human is measured |
 
 ## G7 — At most one effective execution per approval, given H6
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
-| T3, T14, T19 (Tools side) | Idempotency keys and preconditions are enforced by the Tools service itself, in one transaction with the effect; a failed attempt burns its key; resolving an unknown key burns it, so a late request does not execute; every Tools execution is backed by a Gateway action with the same key. | `test_tools_executor.py` (idempotency, precondition and resolution sections), `test_gateway_api.py::test_every_tools_execution_is_backed_by_a_gateway_action` | Integration | L2 race |
+| T3, T14, T19 (Tools side) | Idempotency keys and preconditions are enforced by the Tools service itself, in one transaction with the effect; a failed attempt burns its key; resolving an unknown key burns it, so a late request does not execute; a request held in the Tools service while its key is burned is refused by the Tools service itself when released, and the held request does not block the burn; every Tools execution is backed by a Gateway action with the same key. | `test_tools_executor.py` (idempotency, precondition and resolution sections), `test_tools_faults.py::test_key_burned_while_the_request_is_held_is_enforced_by_the_tools_service`, `test_gateway_api.py::test_every_tools_execution_is_backed_by_a_gateway_action` | Integration | L2 race |
 
 ## Threats not tied to a single goal
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
 | T16 Approval flooding | A fourth pending approval in a session is denied without contacting the Tools service; decided or expired requests free a slot; other sessions are unaffected. | `test_approvals.py::test_pending_approvals_are_limited_per_session`, `::test_expired_requests_do_not_count_against_the_limit` | Integration | Approval burden metric (L3) |
-| T20 Agent reaches evaluation endpoints | The Tools admin API and the Gateway admin and approver APIs are separate applications with their own tokens; their routes do not exist on the agent-facing or executor applications. | `test_tools_admin.py`, `test_approvals.py::test_agent_api_has_no_approval_or_admin_route`, `test_reconcile.py::test_agent_cannot_trigger_reconciliation` | Integration | Network separation (M3, L2) |
+| T20 Agent reaches evaluation endpoints | The Tools admin API and the Gateway admin and approver APIs are separate applications with their own tokens; their routes do not exist on the agent-facing or executor applications. | `test_tools_admin.py`, `test_approvals.py::test_agent_api_has_no_approval_or_admin_route`, `test_reconcile.py::test_no_application_exposes_a_reconciliation_route` | Integration | Network separation (M3, L2) |
+
+## Supporting properties of the deployment
+
+| Property | What is tested | Tests | Level | Missing |
+|---|---|---|---|---|
+| One application and one credential set per process | Each role serves exactly its own routes, starts with only its own secrets read from files, and refuses to start without them. The Gateway API process holds neither the admin nor the approver token; the admin and approver processes have no Tools client. | `test_serve.py` | Integration | The same, observed from inside the containers (L2 secrets and network tests) |
+| Shared SQLite database | Every connection is WAL with `synchronous=FULL`, verified; six separate OS processes append to one audit chain without loss or gap. | `test_storage.py` | Integration (separate processes, one host) | Three containers on one named volume |
+| LLM relay contract | Only `POST /api/chat`, only the allow-listed model, only allow-listed fields; model-management routes refused; the destination cannot be changed by the request; no redirect followed. | `test_llm_relay.py` | Unit | Abuse attempts from the agent container (L2) |
+| Controlled faults | A request can be held before or after commit and released or dropped through the Tools admin API, without holding a database lock. | `test_tools_faults.py` | Integration | Used with a real container kill (K1–K3) |
+| Attacker self-checks | The secret detector finds a secret in the forms it would leak in, from hashes only; failure causes are classified; a Tools-side count that differs from the expectation fails the record. | `test_attacker.py` | Unit | A positive control run in the baseline project |
 
 ## End-to-end evidence
 
-None. To be filled from the L2 report (`make attack`) and the L3 runs (`make eval`).
+One check has run across a container boundary: the LLM relay container, on an internal network plus the egress network, reached the model server bound to the host's loopback interface and reported the digest of the allow-listed model (`qwen3:8b`, `500a1f067a9f…`). The model server stayed bound to `127.0.0.1`.
+
+Nothing else. The first L2 run did not complete: the Docker virtual machine's disk was full, every service failed to open its database at start-up, and the run was stopped. No L2 or L3 result exists.
 
 | Layer | Status |
 |---|---|
-| L2 scripted attacker, per category | Not run |
-| L3 agent benchmark, policy bypass rate | Not run |
+| LLM relay reaches the host model server | Done (start-up check) |
+| L2 scripted attacker, per category | Implemented (`attacks/`), not run |
+| L2 crash cases K1–K3 | Implemented, not run |
+| Baseline positive control | Implemented, not run |
+| L3 agent benchmark, policy bypass rate | Not implemented |
