@@ -1,0 +1,47 @@
+# Default policy for the reference environment.
+# Loaded once at Gateway start-up. The SHA-256 of this file is the policy hash:
+# any change, comments included, invalidates outstanding approvals.
+
+tools:
+  # R0: read-only
+  read_document:
+    tier: R0
+  list_documents:
+    tier: R0
+  read_inbox:
+    tier: R0
+  get_balance:
+    tier: R0
+
+  # R1: reversible
+  draft_email:
+    tier: R1
+  update_document:
+    tier: R1
+
+  # R2: irreversible, approval required
+  send_email:
+    tier: R2
+  delete_document:
+    tier: R2
+    on_tainted_session: require_approval
+  issue_refund:
+    tier: R2
+    constraints:
+      max_amount: "500.00"
+      currency: [EUR]
+    budgets:
+      - key: [account_id]   # global cap, shared by all agents
+        window: 24h
+        max_total: "1000.00"
+      - key: [agent_id]     # secondary per-agent cap
+        window: 24h
+        max_total: "600.00"
+  update_prod_config:
+    tier: R2
+
+default: deny
+
+approval:
+  ttl_seconds: 300
+  max_pending_per_session: 3

@@ -17,7 +17,7 @@ class SchemaError(ValueError):
     """Action rejected by the tool schemas."""
 
 
-def _full_match(regex: str) -> AfterValidator:
+def full_match(regex: str) -> AfterValidator:
     # re.fullmatch on an ASCII-only pattern: no trailing newline, no Unicode digits.
     compiled = re.compile(regex)
 
@@ -49,8 +49,8 @@ ACCOUNT_ID = r"acct_[0-9]{1,8}"
 CONFIG_ID = r"cfg_[0-9]{1,8}"
 CONTACT_ID = r"contact_[0-9]{1,8}"
 
-ContactId = Annotated[str, _full_match(CONTACT_ID)]
-Amount = Annotated[str, _full_match(r"(0|[1-9][0-9]{0,6})\.[0-9]{2}"), AfterValidator(_positive)]
+ContactId = Annotated[str, full_match(CONTACT_ID)]
+Amount = Annotated[str, full_match(r"(0|[1-9][0-9]{0,6})\.[0-9]{2}"), AfterValidator(_positive)]
 Currency = Literal["EUR", "USD", "GBP"]
 
 Subject = Annotated[str, _free_text(200)]
