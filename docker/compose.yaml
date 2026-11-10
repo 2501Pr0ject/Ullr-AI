@@ -135,9 +135,11 @@ networks:
   # Fixed addresses (.2 and .18) sit outside the range used for dynamic allocation.
   net_agent:
     internal: true
+    driver_opts: {com.docker.network.bridge.inhibit_ipv4: "true"}
     ipam: {config: [{subnet: 172.30.0.0/28, ip_range: 172.30.0.8/29}]}
   net_llm:
     internal: true
+    driver_opts: {com.docker.network.bridge.inhibit_ipv4: "true"}
     ipam: {config: [{subnet: 172.30.0.16/28, ip_range: 172.30.0.24/29}]}
   net_tools: {internal: true, ipam: {config: [{subnet: 172.30.0.32/28}]}}
   net_approval: {internal: true, ipam: {config: [{subnet: 172.30.0.48/28}]}}
