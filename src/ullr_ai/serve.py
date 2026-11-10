@@ -9,6 +9,7 @@ environment. A role that needs a secret it was not given refuses to start.
 
 import json
 import os
+import sqlite3
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -133,7 +134,14 @@ def build_app(env: Mapping[str, str]) -> Any:
 def main() -> int:
     try:
         app = build_app(os.environ)
-    except (ConfigError, storage.StorageError, httpx.HTTPError, ValueError, RuntimeError) as exc:
+    except (
+        ConfigError,
+        storage.StorageError,
+        sqlite3.Error,
+        httpx.HTTPError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
         print(f"refusing to start: {exc}", file=sys.stderr, flush=True)
         return 1
     port = int(os.environ.get("ULLR_PORT", "8000"))
