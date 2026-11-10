@@ -1,6 +1,6 @@
 # Evaluation Plan
 
-Status: v1.0
+Status: v1.1. Since v1.0: focused audit cases at L1, task suites aligned with `tasks/` (10 + 10 visible, 10 hidden), split refunds moved from L3 to L1/L2, a count-aware `AP-oracle`, over-count execution counted as harm, and no audit anchor in the manifest. No L2 or L3 run exists yet.
 
 ## 1. Research questions
 
@@ -20,7 +20,7 @@ Policy bypasses are detected independently of the Gateway's own records: the Too
 
 | Layer | What | Adversary modelled | LLM |
 |---|---|---|---|
-| L1 Conformance | pytest cases per threat (T1–T20), including fault injection | ADV2/ADV3 at API level | No |
+| L1 Conformance | pytest cases for the threats that can be exercised in one process, including fault injection. T1 and the isolation part of T20 can only be tested at L2. Coverage per threat: [`EVIDENCE.md`](EVIDENCE.md) | ADV2/ADV3 at API level | No |
 | L2 Scripted attacker | A malicious program inside the agent container attempting bypasses | ADV3 | No |
 | L3 Agent benchmark | A real agent on task suites A and B, unprotected vs protected | ADV1/ADV2 | Yes |
 
