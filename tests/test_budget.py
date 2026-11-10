@@ -5,12 +5,22 @@ per agent over 24 hours.
 """
 
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
 
-from conftest import FakeClock, approved, execute, new_session, propose, rows, status_of
+from conftest import (
+    TOOLS_ADMIN_TOKEN,
+    FakeClock,
+    approved,
+    execute,
+    new_session,
+    propose,
+    rows,
+    status_of,
+)
 from test_gateway_api import forwarding_transport
 from ullr_ai import storage
 from ullr_ai.tools_service.state import Seed
@@ -275,3 +285,75 @@ def test_committed_reservations_cannot_be_rewritten(env, statement):
     finally:
         conn.close()
     assert reservations(env, action_id) == before
+
+
+# --- Account cap under real overlap at the reservation step -------------------
+
+
+def test_three_agents_race_for_one_account_budget(env):
+    """Three approved 400.00 refunds on one account, executed concurrently.
+
+    Refunds on the account are held in the Tools service before commit, so all
+    three requests reach the Gateway's reservation step while the earlier
+    reservations are still open. Exactly two fit under the 1000.00 cap.
+    Approvals are bound to the account version, so of the two reserved refunds
+    only one takes effect on the Tools side; the other is refused there and
+    its reservation is released.
+    """
+    args = {"amount": "400.00", "currency": "EUR"}
+    agents = [new_session(env, f"agent_{n}")[1] for n in (1, 2, 3)]
+    jobs = [(headers, approved(env, headers, "issue_refund", "acct_1", args)) for headers in agents]
+    assert [status_of(env, action_id) for _, action_id in jobs] == ["APPROVED"] * 3
+
+    admin = {"Authorization": f"Bearer {TOOLS_ADMIN_TOKEN}"}
+    holds = []
+    for on_call in (1, 2):
+        body = {
+            "tool": "issue_refund",
+            "resource_id": "acct_1",
+            "on_call": on_call,
+            "hold": "before_commit",
+        }
+        holds.append(env.tools.admin.post("/admin/faults", json=body, headers=admin).json()["id"])
+
+    def run(job):
+        headers, action_id = job
+        return execute(env, headers, action_id, "issue_refund", "acct_1", args)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(run, job) for job in jobs]
+
+        # Wait until two requests are held in the Tools service and the third answered.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            listing = env.tools.admin.get("/admin/faults", headers=admin).json()["faults"]
+            held = [f for f in listing if f["state"] == "HELD"]
+            if len(held) == 2 and sum(f.done() for f in futures) == 1:
+                break
+            time.sleep(0.02)
+        assert len(held) == 2
+
+        # While both are held: two reservations are open, the third was refused.
+        open_rows = [r for r in reservations(env) if r["budget_key"] == "account_id:acct_1"]
+        assert [(r["amount_cents"], r["state"]) for r in open_rows] == [(40_000, "RESERVED")] * 2
+        refused = next(f for f in futures if f.done()).result()
+        assert refused.status_code == 409
+        assert refused.json() == {"error": "budget_exceeded", "budget": "account_id"}
+        assert refunded(env) == 0
+
+        for fault_id in holds:
+            released = env.tools.admin.post(
+                f"/admin/faults/{fault_id}/release", json={"action": "continue"}, headers=admin
+            )
+            assert released.status_code == 200
+        responses = [future.result() for future in futures]
+
+    assert sorted(r.status_code for r in responses) == [200, 409, 409]
+    # Gateway side: two reservations ever created on the account, 800.00 in total.
+    account_rows = [r for r in reservations(env) if r["budget_key"] == "account_id:acct_1"]
+    assert sum(r["amount_cents"] for r in account_rows) == 80_000
+    assert sorted(r["state"] for r in account_rows) == ["COMMITTED", "RELEASED"]
+    # Tools side: one effective execution.
+    assert refunded(env, "acct_1") == 40_000
+    executions = env.tools.state.executions()
+    assert sorted(e["status"] for e in executions) == ["EXECUTED", "FAILED"]
