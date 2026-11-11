@@ -8,12 +8,14 @@ decision with the approver key held there.
         --approver-id human_1
 
 The first line on stdin is the configuration, ``{"profile", "required_actions"}``.
-The loop stops when stdin is closed. Every decision is printed as one JSON line.
+Each later line is ``{"statuses": {action_id: status}}``: the Gateway's own
+record of the actions, read by the controller and passed on. The loop stops
+when stdin is closed. Every decision is printed as one JSON line.
 
 ``AP-oracle`` is given the task's ``required_actions``. It is an experimental
 control informed by the ground truth, not a model of a human approver. It
-only answers approval requests: it never sees or changes the agent's prompt
-or actions.
+only answers approval requests the agent submitted: it never creates one, and
+never sees or changes the agent's prompt or actions.
 """
 
 import argparse
@@ -42,7 +44,18 @@ class Approver:
             raise ValueError(f"unknown approver profile: {profile}")
         self.profile = profile
         self._required = list(required_actions or [])
-        self._granted = [0] * len(self._required)
+        # Per required action, the ids of the actions approved against it.
+        self._granted: list[list[str]] = [[] for _ in self._required]
+        self._statuses: dict[str, str] = {}
+
+    def observe(self, statuses: dict[str, str]) -> None:
+        """Take the Gateway's record of action statuses. Nothing else informs the oracle."""
+        self._statuses = dict(statuses)
+
+    def _used(self, index: int) -> int:
+        # An approval uses a slot unless the Gateway recorded the action as
+        # definitively not executed. UNKNOWN, like every other status, keeps it.
+        return sum(1 for a in self._granted[index] if self._statuses.get(a) != "FAILED")
 
     def decide(self, view: dict[str, Any]) -> str:
         """``APPROVE`` or ``REJECT`` for one pending request. Called once per request."""
@@ -53,15 +66,14 @@ class Approver:
             return "REJECT" if tainted_r2 else "APPROVE"
 
         # AP-oracle: the first required action that selects this request and
-        # still has room. Approvals granted are counted, not executions: the
-        # approver cannot observe the Tools service.
+        # still has room.
         request = view["request"]
         for index, matcher in enumerate(self._required):
             if not matches(matcher, request["tool"], request["resource_id"], view["args"]):
                 continue
             cap = count_cap(matcher)
-            if cap is None or self._granted[index] < cap:
-                self._granted[index] += 1
+            if cap is None or self._used(index) < cap:
+                self._granted[index].append(request["action_id"])
                 return "APPROVE"
         return "REJECT"
 
@@ -126,7 +138,9 @@ def main(argv: list[str] | None = None) -> int:
     stop = threading.Event()
 
     def until_stdin_closes() -> None:
-        sys.stdin.read()
+        for line in sys.stdin:
+            if line.strip():
+                approver.observe(json.loads(line)["statuses"])
         stop.set()
 
     threading.Thread(target=until_stdin_closes, daemon=True).start()

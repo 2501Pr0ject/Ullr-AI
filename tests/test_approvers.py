@@ -7,6 +7,10 @@ import pytest
 from conftest import (
     APPROVER_PRIVATE,
     APPROVER_TOKEN,
+    EXECUTOR_TOKEN,
+    GATEWAY_ADMIN_TOKEN,
+    bearer,
+    execute,
     new_session,
     propose,
     status_of,
@@ -23,9 +27,13 @@ REQUIRED_REFUND = {
 }
 
 
+_ids = iter(range(10**6))
+
+
 def view(tool="issue_refund", resource_id="acct_1", args=None, *, tier="R2", tainted=False):
+    action_id = f"act_{next(_ids):032x}"
     return {
-        "request": {"tool": tool, "resource_id": resource_id},
+        "request": {"action_id": action_id, "tool": tool, "resource_id": resource_id},
         "args": REFUND if args is None else args,
         "tier": tier,
         "provenance": {"tainted": tainted},
@@ -89,6 +97,47 @@ def test_oracle_uses_the_next_required_action_when_the_first_is_full():
     any_refund = {"tool": "issue_refund", "count": {"exactly": 1}}
     oracle = Approver("AP-oracle", [REQUIRED_REFUND, any_refund])
     assert [oracle.decide(view()) for _ in range(3)] == ["APPROVE", "APPROVE", "REJECT"]
+
+
+@pytest.mark.parametrize(
+    ("status", "slot_returned"),
+    [
+        ("FAILED", True),
+        ("UNKNOWN", False),
+        ("EXECUTING", False),
+        ("APPROVED", False),
+        ("COMMITTED", False),
+        ("EXPIRED", False),
+        (None, False),
+    ],
+)
+def test_oracle_slot_comes_back_only_when_the_gateway_records_a_failure(status, slot_returned):
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND])
+    first = view()
+    assert oracle.decide(first) == "APPROVE"
+    oracle.observe({} if status is None else {first["request"]["action_id"]: status})
+    assert oracle.decide(view()) == ("APPROVE" if slot_returned else "REJECT")
+    # The returned slot is used again by the second approval: there is still only one.
+    assert oracle.decide(view()) == "REJECT"
+
+
+def test_oracle_in_the_loop_reapproves_after_a_recorded_failure(env):
+    """Statuses come from the Gateway's own state view, never from the agent."""
+    _, agent = new_session(env)
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND])
+    first = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
+    one_pass(env, oracle)
+    # The account changes under the approved action: its execution fails for good.
+    headers = {**bearer(EXECUTOR_TOKEN), "Idempotency-Key": "key-other-0001", "If-Match": "1"}
+    other = {"tool": "issue_refund", "resource_id": "acct_1", "args": {**REFUND, "amount": "1.00"}}
+    assert env.tools.executor.post("/v1/execute", json=other, headers=headers).status_code == 200
+    assert execute(env, agent, first, "issue_refund", "acct_1", REFUND).json()["status"] == "FAILED"
+
+    retry = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
+    state = env.admin.get("/admin/state", headers=bearer(GATEWAY_ADMIN_TOKEN)).json()
+    oracle.observe({a["action_id"]: a["status"] for a in state["actions"]})
+    (entry,) = one_pass(env, oracle)
+    assert (entry["action_id"], entry["decision"]) == (retry, "APPROVE")
 
 
 def one_pass(env, approver):
