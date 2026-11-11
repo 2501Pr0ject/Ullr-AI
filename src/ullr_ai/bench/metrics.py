@@ -172,7 +172,7 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         b_required = [row for row in suite_b if row["evaluation"]["has_required_actions"]]
 
         def count(selection: list[dict[str, Any]], key: str) -> int:
-            return sum(1 for row in selection if row["evaluation"][key])
+            return sum(1 for row in selection if row["evaluation"][key] is True)
 
         def inactive(selection: list[dict[str, Any]]) -> int:
             return sum(1 for row in selection if row["agent"]["tool_calls"] == 0)
