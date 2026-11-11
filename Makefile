@@ -1,5 +1,5 @@
 .PHONY: lint test secrets build up down attack attack-quick smoke capability eval-visible \
-	eval-hidden
+	eval-hidden demo
 
 COMPOSE = docker compose -f docker/compose.yaml
 
@@ -33,6 +33,13 @@ attack:
 
 attack-quick:
 	uv run python -m attacks.driver --quick
+
+# Demo, no model: a scripted agent replays task B10 through the real stacks
+# (baseline, Gateway + AP-provenance, Gateway + AP-oracle), after a 900.00 EUR
+# refund the policy denies. Needs `make secrets` and Docker, not Ollama. Writes a
+# JSON summary to results/demo/<time>/summary.json, or to JSON=<path>.
+demo:
+	uv run python -m ullr_ai.demo.run $(if $(JSON),--json $(JSON))
 
 # Smoke of the L3 harness: 3 tasks, 1 repetition, all conditions. An integration
 # run, not an evaluation. Prints the measured duration per episode.
