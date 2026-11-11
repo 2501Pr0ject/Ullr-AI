@@ -1,6 +1,6 @@
 # Evaluation Plan
 
-Status: v1.5. Since v1.4: the L3 harness exists; §6 states the oracle's rules, episode isolation and the model-visible replies, and §7 the metric definitions as computed. Repetitions are decided after the smoke run (§6). No full L3 run yet.
+Status: v1.6, pre-registration of the first L3 run on the visible tasks. Since v1.5: §6 fixes the model configuration, the single deterministic pass, the limits and the rerun rule, before that run starts. No full L3 run yet.
 
 ## 1. Research questions
 
@@ -111,14 +111,43 @@ These measure the effect of a *decision rule*. They do not measure the effect of
 
 ### Protocol
 
-- Same model digest, system prompt, tool definitions, temperature and seed in every condition; `think` is off. The effective seed and temperature are written in each row.
+- Same model digest, system prompt, tool definitions, temperature, seed and `think` setting in every condition. The effective request settings are written in each row.
 - Every episode, in both routings, runs on a stack created for it and removed after it: no database, volume, session or log survives from one episode or condition to the next. The Tools state is seeded from the task by the controller.
 - The first user message carries a workspace directory generated from the task's seeded data (contacts, accounts, configuration keys), identical in both routings. It contains no trust label and nothing from the ground truth.
 - The model is shown the same normalized reply in both routings, without trust labels or source lists (`ARCHITECTURE.md` §10).
 - Condition order randomized per task, from a recorded seed.
-- Repetitions: at temperature 0 with a fixed seed, repetitions are near-identical, so three identical repetitions are not planned. After the smoke run, either one deterministic pass or several seeds at a non-zero temperature is chosen, and this section is updated before any full run.
+- Repetitions: at temperature 0 with a fixed seed, repetitions are near-identical, so three identical repetitions are not planned (see "Pre-registered configuration" below).
 - Every episode is published as a row, including failures, skipped tasks and episodes where the agent did nothing.
 - Every tool call the model attempts is recorded, unknown tools included; a call identical to an earlier one is marked as a repeat.
+
+### Pre-registered configuration: first run on the visible tasks
+
+Fixed, and committed, before the run starts. Nothing below, nor the policy, the system prompt, the tool definitions, the tasks or the evaluation criteria, changes during the run.
+
+**Model.** `qwen3:8b` (Ollama digest `500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`) with `think: true`.
+
+**Why this model.** A capability check (`results/m4/capability/`) ran the 10 suite A tasks once, in the baseline routing only, under three configurations. The selection rule was fixed before that check: highest legitimate task success; if tied, lower inaction; if still tied, shorter mean agent episode time. Results:
+
+| Configuration | Suite A success | Inaction | Mean agent episode time |
+|---|---|---|---|
+| `qwen3:8b`, `think: true` | 8 / 10 | 1 | 142.5 s |
+| `qwen3:8b`, `think: false` | 6 / 10 | 1 | 9.9 s |
+| `llama3.1:8b` (no thinking capability; field not sent) | 4 / 10 | 0 | 16.1 s |
+
+The rule selects `qwen3:8b` with `think: true` on the first criterion. Its cost is a much longer episode time, and one of its ten episodes produced no answer (below).
+
+**Pass.** One deterministic pass over the 20 visible tasks (A01–A10, B01–B10) under the four conditions (baseline, `AP-rubber`, `AP-provenance`, `AP-oracle`): 80 episodes. Temperature 0, seed 20261115. Condition order per task from order seed 1. One uncounted warm-up request before the first episode; the first episode is flagged.
+
+**Limits.** Each model request is limited to 600 seconds. A request that reaches the limit ends the episode with no further model turn: it is a visible capability failure, scored like any other episode (typically as inaction or as an unfinished task), never excluded and never rerun. The limit is not raised. An episode also stops before a new model turn once 900 seconds have passed since it started.
+
+**Rerun rule.**
+- An episode may be rerun only if it failed for an infrastructure reason before any model request was made. In practice: the agent process was never started (stack start-up, seeding, fault arming, session creation or approver start failed).
+- The failed original row and its error are kept in `episodes.jsonl`. Each rerun is stored separately (`reruns.jsonl`), with the original it reruns and its attempt number; nothing is overwritten.
+- At most two reruns per episode. A rerun that fails is kept and is not counted as a valid episode. An episode without a completed rerun is reported as an infrastructure failure, not as a result.
+- The number of infrastructure failures, reruns, valid reruns and failed reruns is reported.
+- No episode is rerun because of its outcome, the model's behaviour, a timeout, a harmful action or an unsuccessful task.
+
+**Outputs.** Per episode: the row, the transcript, the service logs of its stack, its timings (stack start-up, agent episode, teardown). Per run: manifest, summary, progress log and run status. They are committed as observed.
 
 ### Outcome measurement
 
