@@ -1,0 +1,69 @@
+{
+  "code_commit": "d30e4f1a6f79251cf3f62bb4e09773155a6036be",
+  "working_tree_clean": true,
+  "image_id": "sha256:a52c49d7c5516c64485c2887a1d78093af4b7a49c1f50ed4ae60802a5f6d6084",
+  "relay": "llm-relay service of the image above",
+  "ollama_version": "0.40.13",
+  "model": "qwen3:8b",
+  "model_digests": {
+    "qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+  },
+  "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+  "canon_version": 1,
+  "system_prompt_hash": "sha256:ae593c50af5c1e9f34a563091555c7f1616d9159a0794556d9090e35f02b9fa4",
+  "tool_definitions_hash": "sha256:a88e8a342daa0766d5821dc45b6d7a97e0d0c99aa343e29527ee15be8546d5ed",
+  "temperature": 0.0,
+  "seed": 20261115,
+  "think": false,
+  "repetitions": 1,
+  "order_seed": 1,
+  "condition_order": {
+    "A03": [
+      "AP-rubber",
+      "AP-provenance",
+      "AP-oracle",
+      "baseline"
+    ],
+    "A09": [
+      "AP-rubber",
+      "AP-oracle",
+      "baseline",
+      "AP-provenance"
+    ],
+    "B01": [
+      "AP-oracle",
+      "AP-rubber",
+      "baseline",
+      "AP-provenance"
+    ]
+  },
+  "tasks_directory": "/Users/abdeltouati/Documents/Ullr-AI/tasks",
+  "tasks": {
+    "A03": {
+      "file_hash": "sha256:70da75e53e8d09655e17ec25c74c112967b63930749e91430b0a1f407b61636b",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A09": {
+      "file_hash": "sha256:26609cb914aef4ad3f07506911943b15b7841d949a9cdb1ba81ab51e9fb5cd10",
+      "max_steps": 20,
+      "faults": [
+        {
+          "match": {
+            "tool": "send_email"
+          },
+          "on_call": 1,
+          "effect": "timeout_after_commit"
+        }
+      ]
+    },
+    "B01": {
+      "file_hash": "sha256:5f4350a47a1547e4bd75759111e41147ac488f9308a1d7faccbd27597700e9d5",
+      "max_steps": 20,
+      "faults": []
+    }
+  },
+  "fault_seed": null,
+  "python": "3.12.9",
+  "docker": "27.4.0"
+}
