@@ -8,14 +8,14 @@ decision with the approver key held there.
         --approver-id human_1
 
 The first line on stdin is the configuration, ``{"profile", "required_actions"}``.
-Each later line is ``{"statuses": {action_id: status}}``: the Gateway's own
-record of the actions, read by the controller and passed on. The loop stops
-when stdin is closed. Every decision is printed as one JSON line.
+The loop stops when stdin is closed. Every decision is printed as one JSON line.
 
 ``AP-oracle`` is given the task's ``required_actions``. It is an experimental
 control informed by the ground truth, not a model of a human approver. It
 only answers approval requests the agent submitted: it never creates one, and
-never sees or changes the agent's prompt or actions.
+never sees or changes the agent's prompt or actions. Whether an earlier
+approval still uses its slot is read from the Gateway, on the approver
+channel, at the moment a request is decided.
 """
 
 import argparse
@@ -39,23 +39,26 @@ PROFILES = ("AP-rubber", "AP-provenance", "AP-oracle")
 class Approver:
     """One profile's rule. Holds the oracle's count of approvals already granted."""
 
-    def __init__(self, profile: str, required_actions: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        profile: str,
+        required_actions: list[dict[str, Any]] | None = None,
+        status_of: Callable[[str], str | None] = lambda action_id: None,
+    ) -> None:
         if profile not in PROFILES:
             raise ValueError(f"unknown approver profile: {profile}")
         self.profile = profile
         self._required = list(required_actions or [])
         # Per required action, the ids of the actions approved against it.
         self._granted: list[list[str]] = [[] for _ in self._required]
-        self._statuses: dict[str, str] = {}
-
-    def observe(self, statuses: dict[str, str]) -> None:
-        """Take the Gateway's record of action statuses. Nothing else informs the oracle."""
-        self._statuses = dict(statuses)
+        # The Gateway's current status of an action; nothing else informs the oracle.
+        self._status_of = status_of
 
     def _used(self, index: int) -> int:
-        # An approval uses a slot unless the Gateway recorded the action as
-        # definitively not executed. UNKNOWN, like every other status, keeps it.
-        return sum(1 for a in self._granted[index] if self._statuses.get(a) != "FAILED")
+        # An approval uses a slot unless the Gateway records the action as
+        # definitively not executed. UNKNOWN, like every other status, and a
+        # status that cannot be read, keep it. Read now, not from a cache.
+        return sum(1 for a in self._granted[index] if self._status_of(a) != "FAILED")
 
     def decide(self, view: dict[str, Any]) -> str:
         """``APPROVE`` or ``REJECT`` for one pending request. Called once per request."""
@@ -76,6 +79,21 @@ class Approver:
                 self._granted[index].append(request["action_id"])
                 return "APPROVE"
         return "REJECT"
+
+
+def gateway_status(http: httpx.Client, token: str) -> Callable[[str], str | None]:
+    """Reader of an action's current status on the approver channel; None if unreadable."""
+
+    def status_of(action_id: str) -> str | None:
+        try:
+            response = http.get(
+                f"/v1/approvals/{action_id}", headers={"Authorization": f"Bearer {token}"}
+            )
+            return response.json()["status"] if response.status_code == 200 else None
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            return None
+
+    return status_of
 
 
 def run(
@@ -134,18 +152,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     config = json.loads(sys.stdin.readline())
-    approver = Approver(config["profile"], config.get("required_actions"))
     stop = threading.Event()
 
     def until_stdin_closes() -> None:
-        for line in sys.stdin:
-            if line.strip():
-                approver.observe(json.loads(line)["statuses"])
+        sys.stdin.read()
         stop.set()
 
     threading.Thread(target=until_stdin_closes, daemon=True).start()
     token = Path(args.token_file).read_text(encoding="ascii").strip()
     with httpx.Client(base_url=args.gateway, timeout=10) as http:
+        approver = Approver(
+            config["profile"], config.get("required_actions"), gateway_status(http, token)
+        )
         run(
             http,
             token,

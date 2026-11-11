@@ -9,13 +9,14 @@ from conftest import (
     APPROVER_TOKEN,
     EXECUTOR_TOKEN,
     GATEWAY_ADMIN_TOKEN,
+    audit_events,
     bearer,
     execute,
     new_session,
     propose,
     status_of,
 )
-from ullr_ai.bench.approvers import Approver, run
+from ullr_ai.bench.approvers import Approver, gateway_status, run
 from ullr_ai.gateway import signing
 
 REFUND = {"amount": "250.00", "currency": "EUR"}
@@ -112,19 +113,40 @@ def test_oracle_uses_the_next_required_action_when_the_first_is_full():
     ],
 )
 def test_oracle_slot_comes_back_only_when_the_gateway_records_a_failure(status, slot_returned):
-    oracle = Approver("AP-oracle", [REQUIRED_REFUND])
+    recorded = {}
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND], recorded.get)
     first = view()
     assert oracle.decide(first) == "APPROVE"
-    oracle.observe({} if status is None else {first["request"]["action_id"]: status})
+    if status is not None:
+        recorded[first["request"]["action_id"]] = status
     assert oracle.decide(view()) == ("APPROVE" if slot_returned else "REJECT")
     # The returned slot is used again by the second approval: there is still only one.
     assert oracle.decide(view()) == "REJECT"
 
 
-def test_oracle_in_the_loop_reapproves_after_a_recorded_failure(env):
-    """Statuses come from the Gateway's own state view, never from the agent."""
+def test_oracle_reads_the_status_when_it_decides_not_before():
+    recorded = {}
+    asked = []
+
+    def status_of(action_id):
+        asked.append(action_id)
+        return recorded.get(action_id)
+
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND], status_of)
+    first = view()
+    oracle.decide(first)
+    assert asked == []  # nothing to ask about yet
+    recorded[first["request"]["action_id"]] = "UNKNOWN"
+    assert oracle.decide(view()) == "REJECT"  # UNKNOWN still uses the slot
+    recorded[first["request"]["action_id"]] = "FAILED"
+    assert oracle.decide(view()) == "APPROVE"  # read again: no cached answer
+    assert asked == [first["request"]["action_id"]] * 2
+
+
+def test_oracle_approves_an_immediate_retry_after_a_recorded_failure(env):
+    """The status is read from the Gateway, on the approver channel, at decision time."""
     _, agent = new_session(env)
-    oracle = Approver("AP-oracle", [REQUIRED_REFUND])
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND], gateway_status(env.approver, APPROVER_TOKEN))
     first = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
     one_pass(env, oracle)
     # The account changes under the approved action: its execution fails for good.
@@ -133,11 +155,43 @@ def test_oracle_in_the_loop_reapproves_after_a_recorded_failure(env):
     assert env.tools.executor.post("/v1/execute", json=other, headers=headers).status_code == 200
     assert execute(env, agent, first, "issue_refund", "acct_1", REFUND).json()["status"] == "FAILED"
 
+    # The retry follows at once: nothing refreshes the oracle in between.
     retry = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
-    state = env.admin.get("/admin/state", headers=bearer(GATEWAY_ADMIN_TOKEN)).json()
-    oracle.observe({a["action_id"]: a["status"] for a in state["actions"]})
     (entry,) = one_pass(env, oracle)
     assert (entry["action_id"], entry["decision"]) == (retry, "APPROVE")
+    # That approval uses the slot again: a third request is rejected.
+    third = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
+    (entry,) = one_pass(env, oracle)
+    assert (entry["action_id"], entry["decision"]) == (third, "REJECT")
+
+
+def test_oracle_keeps_the_slot_when_the_status_cannot_be_read(env):
+    oracle = Approver("AP-oracle", [REQUIRED_REFUND], gateway_status(env.approver, "wrong-token"))
+    assert oracle.decide(view()) == "APPROVE"
+    assert oracle.decide(view()) == "REJECT"
+
+
+def test_approver_status_route_needs_the_channel_token_and_changes_nothing(env):
+    _, agent = new_session(env)
+    action_id = propose(env, agent, "issue_refund", "acct_1", REFUND).json()["action_id"]
+    read = propose(env, agent, "read_document", "doc_1").json()["action_id"]
+    before = audit_events(env)
+    path = f"/v1/approvals/{action_id}"
+    channel = bearer(APPROVER_TOKEN)
+    assert env.approver.get(path, headers=channel).json() == {
+        "action_id": action_id,
+        "status": "PENDING_APPROVAL",
+    }
+    for headers in ({}, agent, bearer(EXECUTOR_TOKEN), bearer(GATEWAY_ADMIN_TOKEN)):
+        assert env.approver.get(path, headers=headers).status_code == 401
+    # Only actions that went through approval, and only well-formed ids.
+    assert env.approver.get(f"/v1/approvals/{read}", headers=channel).status_code == 404
+    assert env.approver.get("/v1/approvals/act_" + "0" * 32, headers=channel).status_code == 404
+    assert env.approver.get("/v1/approvals/nope", headers=channel).status_code == 404
+    # The agent API has no such route.
+    assert env.agent.get(path, headers=channel).status_code in (401, 404)
+    assert audit_events(env) == before
+    assert status_of(env, action_id) == "PENDING_APPROVAL"
 
 
 def one_pass(env, approver):
