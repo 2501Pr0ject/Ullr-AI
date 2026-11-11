@@ -22,7 +22,7 @@ services:
   agent:
     <<: [*service, *idle]
     secrets: [executor_token]
-    networks: [base_tools]
+    networks: [base_tools, base_llm]
   tools-executor:
     <<: *service
     environment: {ULLR_ROLE: tools-executor, ULLR_TOOLS_DB: /data/tools/tools.db}
@@ -40,6 +40,14 @@ services:
     environment: {ULLR_TOOLS_ADMIN_URL: "http://tools-admin:8000"}
     secrets: [tools_admin_token]
     networks: [base_control]
+  # Same relay contract as in the protected project, as a separate instance.
+  llm-relay:
+    <<: *service
+    environment:
+      ULLR_ROLE: llm-relay
+      ULLR_OLLAMA_URL: http://host.docker.internal:11434
+      ULLR_ALLOWED_MODELS: "qwen3:8b"
+    networks: [base_llm, base_egress]
 
 secrets:
   executor_token: {file: ../../secrets/baseline_executor_token}
@@ -51,3 +59,8 @@ volumes:
 networks:
   base_tools: {internal: true, ipam: {config: [{subnet: 172.30.1.0/28}]}}
   base_control: {internal: true, ipam: {config: [{subnet: 172.30.1.16/28}]}}
+  base_llm:
+    internal: true
+    driver_opts: {com.docker.network.bridge.inhibit_ipv4: "true"}
+    ipam: {config: [{subnet: 172.30.1.32/28}]}
+  base_egress: {ipam: {config: [{subnet: 172.30.1.48/28}]}}
