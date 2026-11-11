@@ -120,7 +120,7 @@ Results are in [`results/l2/`](../results/l2/). Each run has its report; run 2 a
 
 **Positive controls, both passed.** In the baseline project the same direct attack reached the Tools executor and produced 2 effective executions. In the protected stack the approved action F1 produced exactly 1.
 
-**Tools-side reconciliation.** The Tools service recorded 7 effective executions in the protected stack, each backed by a committed Gateway action: the first use of the approval later replayed (A3), F1, C1, two for C2, one for C3 and K2. Its 3 failed entries are the second reserved refund of C3 (refused on the version precondition) and the abandoned keys of K1 and K3. The report folds the six raw attacker records of the K cases (execute and retry) into the three K records; they are in `raw_records.jsonl`.
+**Tools-side reconciliation.** The Tools service recorded 7 effective executions in the protected stack, each backed by a committed Gateway action: the first use of the approval later replayed (A3), F1, C1, two for C2, one for C3 and K2. Its 3 failed entries are the second reserved refund of C3 (refused on the version precondition) and the abandoned keys of K1 and K3. Record counts: `report.json` holds 146 records, of which 142 come from the attacker and 4 are built by the driver (the account-budget summary and the three K records). `raw_records.jsonl` holds 148 attacker records. The six extra are the execute and retry attempts of K1, K2 and K3, which the report folds into the three K records. The 142 attacker records of the report are identical, field for field, to their raw lines.
 
 **Observed, not blocked.** Peer agent containers resolve by DNS and accept connections from the agent.
 
