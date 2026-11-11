@@ -85,11 +85,13 @@ def episode(tools, make_env):
             faults.add(tools.state.db_path, **rule)
         env = make_env()
         _, headers = new_session(env)
-        approver = approvers.Approver(profile, task.ground_truth["required_actions"])
+        approver = approvers.Approver(
+            profile,
+            task.ground_truth["required_actions"],
+            approvers.gateway_status(env.approver, APPROVER_TOKEN),
+        )
 
         def approver_pass(_seconds):
-            view = env.admin.get("/admin/state", headers=bearer(GATEWAY_ADMIN_TOKEN)).json()
-            approver.observe({a["action_id"]: a["status"] for a in view["actions"]})
             stop = threading.Event()
             stop.set()
             key = signing.load_private_key(APPROVER_PRIVATE)

@@ -41,12 +41,13 @@ services:
     secrets: [tools_admin_token]
     networks: [base_control]
   # Same relay contract as in the protected project, as a separate instance.
+  # The second model is allow-listed here only, for the M4 capability check.
   llm-relay:
     <<: *service
     environment:
       ULLR_ROLE: llm-relay
       ULLR_OLLAMA_URL: http://host.docker.internal:11434
-      ULLR_ALLOWED_MODELS: "qwen3:8b"
+      ULLR_ALLOWED_MODELS: "qwen3:8b,llama3.1:8b"
     networks: [base_llm, base_egress]
 
 secrets:

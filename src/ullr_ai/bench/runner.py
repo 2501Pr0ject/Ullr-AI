@@ -2,6 +2,7 @@
 
     uv run python -m ullr_ai.bench.runner --tasks tasks --out results/l3/NAME \\
         [--only A03,A09,B01] [--conditions baseline,AP-rubber,...] [--seed N]
+        [--model NAME] [--think true|false|not_applicable] [--warmup]
 
 Runs on the host and drives the two Compose projects, as the L2 driver does.
 Every episode starts from a stack created for it and removed after it, in both
@@ -21,7 +22,6 @@ import json
 import random
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -130,19 +130,6 @@ class Stack:
         raise RuntimeError("the relay did not report its models")
 
 
-def feed_statuses(stack: Stack, approver: Any, done: threading.Event) -> None:
-    """Pass the Gateway's action statuses to the approver process until the agent is done."""
-    while not done.is_set():
-        try:
-            actions = stack.controller("state")["actions"]
-            statuses = {action["action_id"]: action["status"] for action in actions}
-            approver.stdin.write(json.dumps({"statuses": statuses}) + "\n")
-            approver.stdin.flush()
-        except (RuntimeError, subprocess.SubprocessError, OSError, ValueError, KeyError):
-            return
-        done.wait(0.5)
-
-
 def condition_order(task_id: str, conditions: list[str], order_seed: int) -> list[str]:
     """Order of the conditions for one task: a fixed function of the seed and the task."""
     shuffled = sorted(conditions)
@@ -217,7 +204,7 @@ def run_episode(
     approver_log: list[dict[str, Any]] = []
     try:
         stack.up()
-        timings["stack_up_s"] = round(time.monotonic() - started, 1)
+        timings["stack_up_s"] = round(time.monotonic() - started, 1)  # includes a prior removal
         stack.controller("seed", stdin=json.dumps(seed))
         for rule in rules:
             stack.controller(
@@ -240,18 +227,9 @@ def run_episode(
             "model": base["model"],
             "seed": base["seed"],
             "temperature": base["temperature"],
+            "think": base["think"] if type(base["think"]) is bool else None,
             "time_limit": EPISODE_TIME_LIMIT,
         }
-        # The oracle is told what the Gateway recorded about the actions, so that
-        # an approval whose action definitively failed gives its slot back.
-        agent_done = threading.Event()
-        feeder = None
-        if condition == "AP-oracle":
-            feeder = threading.Thread(
-                target=feed_statuses, args=(stack, approver, agent_done), daemon=True
-            )
-            feeder.start()
-
         agent_started = time.monotonic()
         transcript = json.loads(
             stack.exec(
@@ -263,12 +241,11 @@ def run_episode(
                 env=AGENT_ENV[routing],
             )
         )
-        timings["agent_s"] = round(time.monotonic() - agent_started, 1)
+        timings["agent_s"] = round(time.monotonic() - agent_started, 1)  # the whole process
+        # From the first model request to the end of the episode, measured by the agent.
+        timings["agent_episode_s"] = round(transcript["agent_ms"] / 1000, 1)
 
         gateway_state = None
-        agent_done.set()
-        if feeder is not None:
-            feeder.join(timeout=30)
         if routing == "gateway":
             # Closing its stdin is what stops the approver loop.
             output, _ = approver.communicate(timeout=30)
@@ -291,6 +268,7 @@ def run_episode(
 
         row = build_row(base, task, seed, transcript, snapshot, gateway_state, registry)
         row["relay_models"] = stack.relay_models()
+        row["effective_request"] = transcript["request"]  # model, think and options as sent
         row["prompt_hashes_match"] = (
             transcript["system_prompt_hash"] == prompt.system_prompt_hash()
             and transcript["tool_definitions_hash"] == tools.definitions_hash()
@@ -302,13 +280,42 @@ def run_episode(
     finally:
         if approver is not None:
             approver.kill()
+        teardown_started = time.monotonic()
         try:
             stack.down()
         except (RuntimeError, subprocess.SubprocessError):
             print("stack could not be removed", file=sys.stderr)
+    timings["teardown_s"] = round(time.monotonic() - teardown_started, 1)
     timings["total_s"] = round(time.monotonic() - started, 1)
     row["durations"] = timings
     return row, record
+
+
+def think_setting(value: str) -> bool | str:
+    """``true``/``false`` as booleans; ``not_applicable`` stays a word and is never sent."""
+    return {"true": True, "false": False}.get(value, "not_applicable")
+
+
+def warm_up(model: str, think: bool | str, args: argparse.Namespace) -> dict[str, Any]:
+    """One uncounted request, so that loading the model is not charged to an episode.
+
+    Sent from the host to Ollama on the loopback address, with the settings of
+    the run. Its duration is recorded in the manifest and nowhere else.
+    """
+    request: dict[str, Any] = {
+        "model": model,
+        "stream": False,
+        "messages": [{"role": "user", "content": "Reply with the single word OK."}],
+        "options": {"temperature": args.temperature, "seed": args.seed},
+    }
+    if type(think) is bool:
+        request["think"] = think
+    started = time.monotonic()
+    response = httpx.post(OLLAMA + "/api/chat", json=request, timeout=600)
+    return {
+        "http_status": response.status_code,
+        "seconds": round(time.monotonic() - started, 1),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -329,7 +336,7 @@ def manifest(args: argparse.Namespace, tasks: list[Task], orders: dict[str, list
         ).strip(),
         "relay": "llm-relay service of the image above",
         "ollama_version": ollama,
-        "model": MODEL,
+        "model": args.model,
         "model_digests": None,  # filled from the relay's own start-up report
         "policy_hash": load_policy(ROOT / "policies" / "default.yaml").policy_hash,
         "canon_version": CANON_VERSION,
@@ -337,7 +344,8 @@ def manifest(args: argparse.Namespace, tasks: list[Task], orders: dict[str, list
         "tool_definitions_hash": tools.definitions_hash(),
         "temperature": args.temperature,
         "seed": args.seed,
-        "think": False,
+        "think": think_setting(args.think),
+        "warmup": None,  # filled when --warmup is given
         "repetitions": args.repetitions,
         "order_seed": args.order_seed,
         "condition_order": orders,
@@ -367,6 +375,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=20261115)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--order-seed", type=int, default=1)
+    parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--think", choices=["true", "false", "not_applicable"], default="false")
+    parser.add_argument("--warmup", action="store_true", help="one uncounted model request first")
     args = parser.parse_args(argv)
 
     if args.out.exists():
@@ -388,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sh([*COMPOSE["gateway"], "build"])
     run_manifest = manifest(args, tasks, orders)
+    if args.warmup:
+        run_manifest["warmup"] = warm_up(args.model, think_setting(args.think), args)
     args.out.mkdir(parents=True)
     rows = []
     with (
@@ -404,12 +417,14 @@ def main(argv: list[str] | None = None) -> int:
                         "condition": condition,
                         "routing": "direct" if condition == metrics.BASELINE else "gateway",
                         "repetition": repetition,
-                        "model": MODEL,
+                        "model": args.model,
                         # One seed per repetition, the same in every condition.
                         "seed": args.seed + repetition - 1,
                         "temperature": args.temperature,
-                        "think": False,
+                        "think": think_setting(args.think),
                         "max_steps": task.max_steps,
+                        # The first episode after a model change, even after a warm-up.
+                        "first_of_configuration": not rows,
                     }
                     row, record = run_episode(task, condition, base, registry)
                     rows.append(row)
@@ -433,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
             "mean": round(sum(d[part] for d in done) / len(done), 1),
             "max": max(d[part] for d in done),
         }
-        for part in ("stack_up_s", "agent_s", "total_s")
+        for part in ("stack_up_s", "agent_s", "agent_episode_s", "teardown_s", "total_s")
         if done
     }
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
