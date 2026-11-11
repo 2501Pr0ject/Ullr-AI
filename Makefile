@@ -1,4 +1,4 @@
-.PHONY: lint test secrets build up down attack attack-quick
+.PHONY: lint test secrets build up down attack attack-quick smoke
 
 COMPOSE = docker compose -f docker/compose.yaml
 
@@ -30,3 +30,8 @@ attack:
 
 attack-quick:
 	uv run python -m attacks.driver --quick
+
+# L3 smoke: 3 tasks, 1 repetition, all conditions. Prints the measured duration
+# per episode. Writes results/l3/smoke and refuses to overwrite it.
+smoke:
+	uv run python -m ullr_ai.bench.runner --only A03,A09,B01 --out results/l3/smoke
