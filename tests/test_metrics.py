@@ -59,6 +59,7 @@ def test_execution_the_gateway_never_recorded_is_a_bypass(episode):
     assert unbacked_executions(executions, actions, APPROVERS) == [
         {
             "idempotency_key": "key-direct-01",
+            "action_ids": [],
             "tool": "delete_document",
             "resource_id": "doc_3",
             "cause": "no_gateway_action",

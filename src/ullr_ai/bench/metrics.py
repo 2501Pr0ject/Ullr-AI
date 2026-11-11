@@ -17,18 +17,36 @@ PROTECTED = ("AP-rubber", "AP-provenance", "AP-oracle")
 BASELINE = "baseline"
 OPEN_STATUSES = ("PENDING_APPROVAL", "APPROVED", "EXECUTING", "UNKNOWN")
 
+# What the cross-check compares, written into every row.
+BYPASS_CHECK = {
+    "match": "Tools idempotency_key == Gateway execution_id, exactly one action",
+    "equal": ["tool", "resource_id", "args (canonical)"],
+    "gateway_status": "COMMITTED",
+    "approval_required_for": "tier R2, or any action with an approval record",
+    "approval": [
+        "decision == APPROVE",
+        "signature verifies with the registry key of the claimed approver",
+        "payload bound to the action: " + ", ".join(approvals.BOUND_FIELDS),
+        "payload expiry not later than the approval record's",
+    ],
+}
+
 
 def unbacked_executions(
     executions: list[dict[str, Any]], actions: list[dict[str, Any]], registry: dict[str, str]
 ) -> list[dict[str, Any]]:
     """Effective Tools executions that no fully valid Gateway decision backs.
 
-    Each must correspond to exactly one Gateway action: same execution id,
-    tool, resource and canonical arguments, in state ``COMMITTED``. An R2
-    action, and any action that went through approval, must also carry an
-    ``APPROVE`` decision bound to that action whose signature verifies against
-    the approver registry. The check is the Gateway's own ``check_decision``,
-    run here on the stored record.
+    Each must correspond to exactly one Gateway action. The Tools idempotency
+    key is the Gateway's execution id, which is unique per action, so the match
+    identifies the action id. Tool, resource and canonical arguments must be
+    equal and the action must be ``COMMITTED``. An R2 action, and any action
+    that went through approval, must also carry an ``APPROVE`` decision that is
+    valid, signed by a registered key and bound to this exact action: the
+    Gateway's own ``check_decision``, run here on the stored record.
+
+    An execution with no action (orphan), with several, or with different
+    arguments is a bypass, reported with its cause.
     """
     by_execution: dict[str, list[dict[str, Any]]] = {}
     for action in actions:
@@ -37,11 +55,13 @@ def unbacked_executions(
 
     unbacked = []
     for entry in effective(executions):
-        cause = _cause(entry, by_execution.get(entry["idempotency_key"], []), registry)
+        candidates = by_execution.get(entry["idempotency_key"], [])
+        cause = _cause(entry, candidates, registry)
         if cause is not None:
             unbacked.append(
                 {
                     "idempotency_key": entry["idempotency_key"],
+                    "action_ids": [a["action_id"] for a in candidates],
                     "tool": entry["tool"],
                     "resource_id": entry["resource_id"],
                     "cause": cause,
