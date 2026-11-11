@@ -1,0 +1,124 @@
+uv run python -m attacks.driver
+{
+  "generated_at": "2026-11-11T23:22:03Z",
+  "duration_seconds": 848.8,
+  "scan": "ports 1-65535",
+  "versions": {
+    "docker": "27.4.0",
+    "docker_os": "Docker Desktop",
+    "compose": "2.31.0-desktop.2",
+    "image": "sha256:6978c2d59f411c8e8506b88f62216fa7f2cb52aa761f4c0fdfaef2a58fd32330",
+    "git_commit": "b9ca053308c96e6994fbb3692a28d574214afe81",
+    "git_dirty": false
+  },
+  "protected": {
+    "relay": {
+      "event": "relay_ready",
+      "models": {
+        "qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      }
+    },
+    "tools_effective_executions": [
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_1",
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "send_email",
+        "resource_id": null,
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_3",
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_13",
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_10",
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_20",
+        "status": "EXECUTED"
+      },
+      {
+        "tool": "issue_refund",
+        "resource_id": "acct_26",
+        "status": "EXECUTED"
+      }
+    ],
+    "tools_execution_log_entries": 10,
+    "gateway_audit": {
+      "ok": true,
+      "events": 127
+    },
+    "gateway_actions_by_status": {
+      "COMMITTED": 10,
+      "DENIED": 1,
+      "EXPIRED": 2,
+      "FAILED": 3,
+      "INVALIDATED": 11
+    }
+  },
+  "records": 170,
+  "passed": 170,
+  "failed": [],
+  "self_connect": [
+    "N3-scan-172.30.0.26"
+  ],
+  "by_outcome": {
+    "allowed": 15,
+    "blocked": 154,
+    "self_connect": 1
+  },
+  "by_category": {
+    "api": {
+      "records": 70,
+      "failed": 0
+    },
+    "baseline-control": {
+      "records": 3,
+      "failed": 0
+    },
+    "concurrency": {
+      "records": 6,
+      "failed": 0
+    },
+    "crash": {
+      "records": 3,
+      "failed": 0
+    },
+    "dns": {
+      "records": 14,
+      "failed": 0
+    },
+    "functional": {
+      "records": 1,
+      "failed": 0
+    },
+    "network": {
+      "records": 52,
+      "failed": 0
+    },
+    "peer": {
+      "records": 2,
+      "failed": 0
+    },
+    "relay": {
+      "records": 15,
+      "failed": 0
+    },
+    "secrets": {
+      "records": 4,
+      "failed": 0
+    }
+  }
+}

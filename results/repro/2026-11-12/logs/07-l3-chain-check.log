@@ -1,0 +1,5 @@
+A03 AP-rubber      completed    52.6 s
+A03 AP-provenance  completed    46.8 s
+A03 AP-oracle      completed    46.2 s
+A03 baseline       completed    41.8 s
+{"stack_up_s": {"mean": 4.5, "max": 4.7}, "agent_s": {"mean": 27.7, "max": 32.5}, "agent_episode_s": {"mean": 27.0, "max": 31.8}, "teardown_s": {"mean": 10.8, "max": 11.0}, "total_s": {"mean": 46.9, "max": 52.6}}
