@@ -1,4 +1,4 @@
-.PHONY: lint test secrets build up down attack attack-quick smoke capability
+.PHONY: lint test secrets build up down attack attack-quick smoke capability eval-visible
 
 COMPOSE = docker compose -f docker/compose.yaml
 
@@ -45,3 +45,10 @@ capability:
 	$(CAPABILITY) --model qwen3:8b --think true --out results/m4/capability/qwen3-8b-think-true
 	$(CAPABILITY) --model llama3.1:8b --think not_applicable \
 		--out results/m4/capability/llama3.1-8b
+
+# L3, visible tasks: one deterministic pass, four conditions, pre-registered
+# configuration (EVALUATION_PLAN.md section 6). Refuses to overwrite a run.
+VISIBLE = A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,B01,B02,B03,B04,B05,B06,B07,B08,B09,B10
+eval-visible:
+	uv run python -m ullr_ai.bench.runner --only $(VISIBLE) --model qwen3:8b --think true \
+		--temperature 0 --seed 20261115 --warmup --out results/l3/visible-1

@@ -12,8 +12,19 @@ condition to the next. Outcomes are read from the Tools service only.
 Written to the output directory, which must not exist yet:
 - ``episodes.jsonl``: one row per episode, skipped and failed ones included;
 - ``transcripts.jsonl``: the agent's transcript and the approver's log;
+- ``reruns.jsonl``, ``rerun_transcripts.jsonl``: reruns, see below;
+- ``logs/``: the service logs of every episode's stack, taken before removal;
+- ``progress.log`` and ``status.json``: what has run so far, and whether the
+  run finished;
 - ``summary.json``: the metrics of EVALUATION_PLAN.md section 7;
 - ``manifest.json``: what is needed to tell which run this was.
+
+Rerun rule (EVALUATION_PLAN.md section 6). An episode is run again only if it
+failed for an infrastructure reason before the agent process was started, so
+before any model request could be made. The failed row stays in
+``episodes.jsonl``; each rerun goes to ``reruns.jsonl`` with ``rerun_of`` and
+its attempt number, failed ones included. The summary uses a completed rerun
+in place of its failed original. Nothing is ever rerun for its outcome.
 """
 
 import argparse
@@ -57,6 +68,7 @@ CONDITIONS = (metrics.BASELINE, *metrics.PROTECTED)
 AGENT_ID = "agent_1"
 EPISODE_TIME_LIMIT = 900.0
 SETTLE_TIMEOUT = 60.0
+MAX_RERUNS = 2  # per episode, only under the rerun rule
 
 
 def sh(command: list[str], *, stdin: str | None = None, timeout: float = 1800) -> str:
@@ -136,6 +148,14 @@ class Stack:
         process.stdin.flush()
         return process
 
+    def save_logs(self, path: Path) -> None:
+        """Service logs of this stack, kept before it is removed. Best effort."""
+        try:
+            text = sh([*self._compose, "logs", "--no-color", "--timestamps"], timeout=120)
+        except (RuntimeError, subprocess.SubprocessError) as exc:
+            text = f"logs not available: {type(exc).__name__}\n"
+        path.write_text(text, encoding="utf-8")
+
     def relay_models(self) -> dict[str, str]:
         """Model digests the relay reported when it started."""
         for line in sh([*self._compose, "logs", "--no-log-prefix", "llm-relay"]).splitlines():
@@ -209,10 +229,23 @@ def build_row(
     return row
 
 
+def eligible_for_rerun(row: dict[str, Any]) -> bool:
+    """An infrastructure failure before the agent process started, and nothing else."""
+    return row["status"] == "error" and row.get("model_requested") is False
+
+
 def run_episode(
-    task: Task, condition: str, base: dict[str, Any], registry: dict[str, str]
+    task: Task,
+    condition: str,
+    base: dict[str, Any],
+    registry: dict[str, str],
+    log_path: Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """One episode. Returns ``(row, transcript record)``."""
+    """One episode. Returns ``(row, transcript record)``.
+
+    ``model_requested`` in the row is false only if the agent process was never
+    started; once it has started, a model request may have been made.
+    """
     routing = base["routing"]
     try:
         rules = fault_rules(task)
@@ -225,6 +258,7 @@ def run_episode(
     started = time.monotonic()
     approver = None
     approver_log: list[dict[str, Any]] = []
+    model_requested = False
     try:
         attempts = stack.up()
         timings["stack_up_s"] = round(time.monotonic() - started, 1)  # includes a prior removal
@@ -254,6 +288,7 @@ def run_episode(
             "time_limit": EPISODE_TIME_LIMIT,
         }
         agent_started = time.monotonic()
+        model_requested = True
         transcript = json.loads(
             stack.exec(
                 "agent",
@@ -299,11 +334,13 @@ def run_episode(
         )
         record = {"transcript": transcript, "approver_log": approver_log, "snapshot": snapshot}
     except (RuntimeError, subprocess.SubprocessError, ValueError, KeyError) as exc:
-        row = {**base, "status": "error", "error": f"{type(exc).__name__}: {exc}"[:500]}
+        row = {**base, "status": "error", "error": f"{type(exc).__name__}: {exc}"[-500:]}
         record = {"approver_log": approver_log}
     finally:
         if approver is not None:
             approver.kill()
+        if log_path is not None:
+            stack.save_logs(log_path)
         teardown_started = time.monotonic()
         try:
             stack.down()
@@ -312,7 +349,39 @@ def run_episode(
     timings["teardown_s"] = round(time.monotonic() - teardown_started, 1)
     timings["total_s"] = round(time.monotonic() - started, 1)
     row["durations"] = timings
+    row["model_requested"] = model_requested
     return row, record
+
+
+def effective_rows(
+    rows: list[dict[str, Any]], reruns: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Rows counted in the summary: each original, or the completed rerun that replaces it.
+
+    A failed rerun is never counted; an original without a completed rerun is
+    counted as it is (an error row, so not a completed episode).
+    """
+    replacement = {}
+    for rerun in reruns:
+        if rerun["status"] == "completed":
+            key = tuple(rerun["rerun_of"][k] for k in ("task_id", "condition", "repetition"))
+            replacement.setdefault(key, rerun)
+    return [
+        replacement.get((row["task_id"], row["condition"], row["repetition"]), row)
+        if eligible_for_rerun(row)
+        else row
+        for row in rows
+    ]
+
+
+def write_status(out: Path, state: str, done: int, total: int) -> None:
+    status = {
+        "state": state,
+        "episodes_done": done,
+        "episodes_planned": total,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    (out / "status.json").write_text(json.dumps(status) + "\n", encoding="utf-8")
 
 
 def think_setting(value: str) -> bool | str:
@@ -426,11 +495,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.warmup:
         run_manifest["warmup"] = warm_up(args.model, think_setting(args.think), args)
     args.out.mkdir(parents=True)
+    (args.out / "logs").mkdir()
+    total = args.repetitions * sum(len(orders[task.id]) for task in tasks)
+    write_status(args.out, "running", 0, total)
     rows = []
+    reruns: list[dict[str, Any]] = []
     with (
         (args.out / "episodes.jsonl").open("w", encoding="utf-8") as episodes,
         (args.out / "transcripts.jsonl").open("w", encoding="utf-8") as transcripts,
+        (args.out / "reruns.jsonl").open("w", encoding="utf-8") as rerun_rows,
+        (args.out / "rerun_transcripts.jsonl").open("w", encoding="utf-8") as rerun_records,
+        (args.out / "progress.log").open("w", encoding="utf-8") as progress,
     ):
+
+        def report(line: str) -> None:
+            print(line, flush=True)
+            progress.write(line + "\n")
+            progress.flush()
+
         for repetition in range(1, args.repetitions + 1):
             for task in tasks:
                 for condition in orders[task.id]:
@@ -450,23 +532,59 @@ def main(argv: list[str] | None = None) -> int:
                         # The first episode after a model change, even after a warm-up.
                         "first_of_configuration": not rows,
                     }
-                    row, record = run_episode(task, condition, base, registry)
-                    rows.append(row)
                     key = {name: base[name] for name in ("task_id", "condition", "repetition")}
+                    name = f"{task.id}_{condition}_r{repetition}"
+                    row, record = run_episode(
+                        task, condition, base, registry, args.out / "logs" / f"{name}.log"
+                    )
+                    rows.append(row)
                     episodes.write(json.dumps(row, ensure_ascii=False) + "\n")
                     episodes.flush()
                     transcripts.write(json.dumps({**key, **record}, ensure_ascii=False) + "\n")
                     transcripts.flush()
-                    print(
+                    report(
                         f"{task.id} {condition:<14} {row['status']:<9}"
-                        f" {row['durations']['total_s']:>7.1f} s",
-                        flush=True,
+                        f" {row['durations']['total_s']:>7.1f} s"
                     )
-                    if run_manifest["model_digests"] is None and "relay_models" in row:
-                        run_manifest["model_digests"] = row["relay_models"]
+                    attempt, last = 0, row
+                    while eligible_for_rerun(last) and attempt < MAX_RERUNS:
+                        attempt += 1
+                        last, record = run_episode(
+                            task,
+                            condition,
+                            base,
+                            registry,
+                            args.out / "logs" / f"{name}_rerun{attempt}.log",
+                        )
+                        last |= {"rerun_of": key, "rerun_attempt": attempt}
+                        reruns.append(last)
+                        rerun_rows.write(json.dumps(last, ensure_ascii=False) + "\n")
+                        rerun_rows.flush()
+                        rerun_records.write(
+                            json.dumps({**key, "rerun_attempt": attempt, **record}) + "\n"
+                        )
+                        rerun_records.flush()
+                        report(f"{task.id} {condition:<14} rerun {attempt}: {last['status']}")
+                    if run_manifest["model_digests"] is None and "relay_models" in last:
+                        run_manifest["model_digests"] = last["relay_models"]
+                    write_status(args.out, "running", len(rows), total)
 
-    summary = metrics.aggregate(rows)
-    done = [row["durations"] for row in rows if row["status"] == "completed"]
+    counted = effective_rows(rows, reruns)
+    summary = metrics.aggregate(counted)
+    summary["infrastructure"] = {
+        "episodes": len(rows),
+        "failed_originals": [
+            {"task_id": r["task_id"], "condition": r["condition"], "error": r.get("error")}
+            for r in rows
+            if r["status"] == "error"
+        ],
+        "eligible_for_rerun": sum(1 for r in rows if eligible_for_rerun(r)),
+        "reruns": len(reruns),
+        "valid_reruns": sum(1 for r in reruns if r["status"] == "completed"),
+        "failed_reruns": sum(1 for r in reruns if r["status"] != "completed"),
+        "counted_episodes": len(counted),
+    }
+    done = [row["durations"] for row in counted if row["status"] == "completed"]
     summary["durations_s"] = {
         part: {
             "mean": round(sum(d[part] for d in done) / len(done), 1),
@@ -479,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
     (args.out / "manifest.json").write_text(
         json.dumps(run_manifest, indent=2) + "\n", encoding="utf-8"
     )
+    write_status(args.out, "completed", len(rows), total)
     print(json.dumps(summary["durations_s"]))
     return 0
 

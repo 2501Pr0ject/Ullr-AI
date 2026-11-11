@@ -35,6 +35,58 @@ def test_condition_order_is_a_fixed_permutation_per_task():
     assert orders != {t: runner.condition_order(t, conditions, 2) for t in TASKS}
 
 
+def failed(task, condition, model_requested, repetition=1):
+    return {
+        "task_id": task,
+        "condition": condition,
+        "repetition": repetition,
+        "status": "error",
+        "error": "RuntimeError: x",
+        "model_requested": model_requested,
+    }
+
+
+def test_only_a_failure_before_the_agent_started_is_eligible_for_rerun():
+    assert runner.eligible_for_rerun(failed("A01", "baseline", False))
+    assert not runner.eligible_for_rerun(failed("A01", "baseline", True))
+    assert not runner.eligible_for_rerun({**failed("A01", "baseline", False), "status": "skipped"})
+    completed = {"status": "completed", "model_requested": True}
+    assert not runner.eligible_for_rerun(completed)
+    # A row without the flag (older format) is never treated as eligible.
+    assert not runner.eligible_for_rerun({"status": "error"})
+
+
+def test_a_completed_rerun_replaces_its_original_and_nothing_else_does():
+    key = {"task_id": "A01", "condition": "baseline", "repetition": 1}
+    original = failed("A01", "baseline", False)
+    after_model = failed("A02", "baseline", True)
+    still_failing = failed("A03", "AP-rubber", False)
+    ok = {"task_id": "A04", "condition": "baseline", "repetition": 1, "status": "completed"}
+    rows = [original, after_model, still_failing, ok]
+    reruns = [
+        {**failed("A01", "baseline", False), "rerun_of": key, "rerun_attempt": 1},
+        {**key, "status": "completed", "rerun_of": key, "rerun_attempt": 2},
+        {
+            **failed("A03", "AP-rubber", False),
+            "rerun_of": {**key, "task_id": "A03", "condition": "AP-rubber"},
+            "rerun_attempt": 1,
+        },
+        # Even if it existed, a rerun of an episode that reached the model is ignored.
+        {
+            "task_id": "A02",
+            "condition": "baseline",
+            "status": "completed",
+            "rerun_of": {**key, "task_id": "A02"},
+        },
+    ]
+    counted = runner.effective_rows(rows, reruns)
+    assert counted[0]["status"] == "completed" and counted[0]["rerun_attempt"] == 2
+    assert counted[1] is after_model
+    assert counted[2] is still_failing
+    assert counted[3] is ok
+    assert original["status"] == "error"  # the original row is untouched
+
+
 def test_a_service_that_is_not_running_is_detected():
     listing = "agent running\ntools-admin exited\ntools-executor running\n\nllm-relay restarting\n"
     assert runner.not_running(listing) == ["tools-admin", "llm-relay"]
