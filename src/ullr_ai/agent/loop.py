@@ -34,6 +34,7 @@ def run(
     known_tools: frozenset[str],
     max_steps: int,
     options: dict[str, Any],
+    think: bool | None = False,
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
@@ -41,20 +42,35 @@ def run(
 
     ``max_steps`` bounds the tool calls forwarded to the client. ``chat``
     returns the model's reply, or None when the model could not be reached.
+    ``think`` is sent as given; None means the field is not sent at all, for a
+    model without that capability. ``agent_ms`` runs from the first model
+    request to the end of the episode.
     """
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": first_message},
     ]
     # What every chat request carries besides the messages: recorded once.
-    fixed = {"model": model, "tools": tools, "stream": False, "think": False, "options": options}
+    fixed = {"model": model, "tools": tools, "stream": False, "options": options}
+    if think is not None:
+        fixed["think"] = think
+    began = clock()
     events: list[dict[str, Any]] = []
     seen: dict[str, int] = {}
     steps = 0
 
     def finish(reason: str) -> dict[str, Any]:
-        request = {name: fixed[name] for name in ("model", "think", "options")}
-        return {"end_reason": reason, "request": request, "events": events}
+        request = {
+            "model": model,
+            "think": "not_sent" if think is None else think,
+            "options": options,
+        }
+        return {
+            "end_reason": reason,
+            "request": request,
+            "agent_ms": round((clock() - began) * 1000, 1),
+            "events": events,
+        }
 
     turn = 0
     while True:
@@ -77,6 +93,7 @@ def run(
                 "turn": turn,
                 "ms": elapsed,
                 "content": content,
+                "thinking": message.get("thinking"),
                 "tool_calls": calls,
                 "eval_count": reply.get("eval_count"),
                 "prompt_eval_count": reply.get("prompt_eval_count"),

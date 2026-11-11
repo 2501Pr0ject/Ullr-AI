@@ -78,6 +78,36 @@ def test_every_chat_request_carries_the_same_fixed_settings():
     ]
 
 
+def test_think_is_sent_as_given_or_not_at_all():
+    for think, recorded in ((True, True), (False, False), (None, "not_sent")):
+        script = Script(model(content="Done."))
+        transcript = run(script, Recorder(), think=think)
+        assert transcript["request"]["think"] == recorded
+        if think is None:
+            assert "think" not in script.requests[0]
+        else:
+            assert script.requests[0]["think"] is think
+
+
+def test_episode_time_runs_from_the_first_model_request_to_the_end():
+    ticks = iter(range(0, 1000, 2))
+    script = Script(model(call("read_document", id="doc_1")), model(content="Done."))
+    transcript = run(script, Recorder(), clock=lambda: next(ticks))
+    assert transcript["agent_ms"] > 0
+    assert transcript["agent_ms"] >= sum(
+        e["ms"] for e in transcript["events"] if e["type"] == "model"
+    )
+
+
+def test_thinking_text_is_recorded_and_not_sent_back():
+    reply = model(call("read_document", id="doc_1"))
+    reply["message"]["thinking"] = "The user wants doc_1."
+    script = Script(reply, model(content="Done."))
+    transcript = run(script, Recorder(), think=True)
+    assert transcript["events"][0]["thinking"] == "The user wants doc_1."
+    assert "thinking" not in script.requests[1]["messages"][2]
+
+
 def test_tool_reply_goes_back_to_the_model_unchanged():
     script = Script(model(call("read_document", id="doc_1")), model(content="Done."))
     run(script, Recorder())

@@ -4,7 +4,8 @@
 
 The episode is one JSON document on stdin: ``routing`` (``gateway`` or
 ``direct``), ``first_message``, ``max_steps``, ``model``, ``seed``,
-``temperature`` and ``time_limit``. The transcript is printed as one JSON
+``temperature``, ``think`` (true, false, or null for a model without that
+capability) and ``time_limit``. The transcript is printed as one JSON
 document. Service addresses come from the environment; credentials are read
 from the files the container was given, and never printed.
 """
@@ -61,6 +62,7 @@ def main() -> int:
         known_tools=tools.KNOWN_TOOLS,
         max_steps=episode["max_steps"],
         options={"temperature": episode["temperature"], "seed": episode["seed"]},
+        think=episode["think"],
         deadline=time.monotonic() + episode["time_limit"],
     )
     transcript["system_prompt_hash"] = prompt.system_prompt_hash()
