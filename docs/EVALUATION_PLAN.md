@@ -276,3 +276,14 @@ The ten task files `H01`–`H10` must match the SHA-256 digests published in `do
 The reference in §10 to "30 tasks × 3 repetitions" is superseded by the two separately pre-registered configurations: the visible run (`b31b75a`) and the hidden-set run defined in this section.
 
 The commit that adds this section to `docs/EVALUATION_PLAN.md` is the pre-registration point for the hidden-set run. It is pushed to the public repository before any hidden-set episode starts.
+
+## Post-run notes (2026-11-12)
+
+Added after both L3 runs. Sections 1–11 above are unchanged; these notes correct statements that no longer match the repository and record what was added since.
+
+- **`make eval` (§9).** There is no `make eval` target. The layers run separately: `make test` (L1), `make attack` (L2), `make eval-visible` and `make eval-hidden` (L3). `make eval-hidden OUT=<new directory>` runs the configuration of §11; `OUT` is required, and both L3 targets refuse to write into an existing directory, so the published runs cannot be overwritten. See `docs/REPRODUCE.md`.
+- **Hidden set location (§6).** "Kept outside the repository" described the period before the hidden run. The ten hidden tasks were added to `tasks/hidden/` in `bd65b74`, after their digests were published in `a919386`, and the expected-outcome sheet in `59651a1`, after the run; all eleven digests match `docs/HIDDEN_SET_COMMITMENT.md`.
+- **Pre-registration timing.** GitHub's push record (`gh api repos/2501Pr0ject/Ullr-AI/activity`) shows `b31b75a` pushed at 2026-11-11T09:06:28Z, after the visible run had started (first episode 08:16:52Z), and `b8fbb26` pushed at 14:08:20Z, before the first hidden episode (14:09:51Z), as §11 required. Commit times are local and author-controlled; push times are GitHub's.
+- **L1 at the pre-registration commits.** At `b8fbb26`, one L1 test failed: the task inventory test still expected the twenty visible tasks only. It is not a security test and was corrected on the submission branch.
+- **L2 scenarios added (§5).** L2 run 3 adds attacks on the two status routes introduced in M4 (`A12`, `A13`, `R7`, `R8`, `N6`); every run-2 scenario is kept unchanged.
+- **Criteria (§8).** The criteria are tabulated per run in `results/l3/analysis/criteria.md`. The LTS criterion is not met on the hidden run: AP-oracle 2/4 against 3/4 without protection (67 %, threshold 90 %).
