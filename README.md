@@ -195,7 +195,7 @@ Ullr uses the same core mechanism and does not claim it as new. It differs in as
 - An approval is also bound to the resource version, the policy hash and the provenance version, and expires.
 - Failure semantics are specified: idempotency keys enforced by the Tools service, an `UNKNOWN` state reconciled before any budget release, and cumulative budgets across agents.
 
-GateArena's evaluation is larger than the one planned here; Ullr has no result yet.
+GateArena's evaluation is larger than the one planned here. Ullr has L2 results but no L3 result comparable to GateArena's yet.
 
 ## 11. Limitations and threats to validity
 
