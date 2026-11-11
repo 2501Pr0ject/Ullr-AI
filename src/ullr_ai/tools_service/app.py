@@ -194,7 +194,9 @@ def create_admin_app(
             return error(400, "invalid_request")
         if (
             type(body) is not dict
-            or set(body) != {"tool", "resource_id", "on_call", "hold"}
+            or not {"tool", "resource_id", "on_call", "hold"} <= set(body)
+            or not set(body) <= {"tool", "resource_id", "on_call", "hold", "auto_release"}
+            or body.get("auto_release", "drop") not in faults.AUTO_RELEASES
             or body["tool"] not in MUTATING_TOOLS
             or not (body["resource_id"] is None or type(body["resource_id"]) is str)
             or type(body["on_call"]) is not int
@@ -209,6 +211,7 @@ def create_admin_app(
             body["resource_id"],
             body["on_call"],
             body["hold"],
+            body.get("auto_release"),
         )
         return JSONResponse({"id": fault_id}, status_code=201)
 

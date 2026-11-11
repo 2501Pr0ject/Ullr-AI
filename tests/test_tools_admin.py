@@ -125,3 +125,31 @@ def test_invalid_seed_is_rejected_and_state_is_kept(tools, body):
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_request"}
     assert tools.state.snapshot() == before
+
+
+def test_execution_log_carries_the_canonical_arguments(tools):
+    headers = {**bearer(EXECUTOR_TOKEN), "Idempotency-Key": "key-args-0001", "If-Match": "1"}
+    args = {"amount": "49.90", "currency": "EUR"}
+    body = {"tool": "issue_refund", "resource_id": "acct_1", "args": args}
+    assert tools.executor.post("/v1/execute", json=body, headers=headers).status_code == 200
+    refused = {**body, "args": {"amount": "5.00", "currency": "USD"}}
+    headers["Idempotency-Key"] = "key-args-0002"
+    headers["If-Match"] = "2"
+    assert tools.executor.post("/v1/execute", json=refused, headers=headers).status_code == 422
+
+    log = tools.admin.get("/admin/executions", headers=ADMIN).json()["executions"]
+    assert [(e["status"], e["args"]) for e in log] == [
+        ("EXECUTED", args),
+        ("FAILED", {"amount": "5.00", "currency": "USD"}),
+    ]
+
+
+def test_abandoned_key_has_no_arguments_in_the_log(tools):
+    response = tools.executor.post(
+        "/v1/executions/key-gone-0001/resolve",
+        json={"tool": "send_email", "resource_id": None},
+        headers=bearer(EXECUTOR_TOKEN),
+    )
+    assert response.json()["status"] == "FAILED"
+    log = tools.admin.get("/admin/executions", headers=ADMIN).json()["executions"]
+    assert [(e["status"], e["args"]) for e in log] == [("FAILED", None)]

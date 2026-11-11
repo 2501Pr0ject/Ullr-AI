@@ -4,6 +4,7 @@ Trust labels (internal / external origin) are assigned here, at seeding time.
 No executor request can set or change them (THREAT_MODEL.md, H5).
 """
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS faults (
     calls_seen INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'ARMED' CHECK (state IN ('ARMED', 'HELD', 'RELEASED')),
     release_action TEXT CHECK (release_action IN ('continue', 'drop')),
+    -- 'drop': the rule releases itself when it trips, with no controller involved.
+    auto_release TEXT CHECK (auto_release IN ('drop')),
     idempotency_key TEXT,
     -- What the held request actually did once the wait ended.
     outcome TEXT CHECK (outcome IN ('continued', 'dropped', 'timed_out')),
@@ -100,6 +103,8 @@ CREATE TABLE IF NOT EXISTS executions (
     tool TEXT NOT NULL,
     resource_id TEXT,
     request_hash TEXT NOT NULL,
+    -- Canonical arguments as received; NULL for a key abandoned before any request.
+    args TEXT,
     status TEXT NOT NULL CHECK (status IN ('EXECUTED', 'FAILED')),
     http_status INTEGER NOT NULL,
     response TEXT NOT NULL
@@ -227,10 +232,14 @@ class ToolsState:
     def executions(self) -> list[dict[str, Any]]:
         with self.transaction() as conn:
             rows = conn.execute(
-                "SELECT idempotency_key, tool, resource_id, request_hash, status, http_status"
-                " FROM executions ORDER BY rowid"
+                "SELECT idempotency_key, tool, resource_id, request_hash, args, status,"
+                " http_status FROM executions ORDER BY rowid"
             )
-            return [dict(row) for row in rows]
+            log = [dict(row) for row in rows]
+        for entry in log:
+            if entry["args"] is not None:
+                entry["args"] = json.loads(entry["args"])
+        return log
 
     def execution(self, idempotency_key: str) -> dict[str, Any] | None:
         with self.transaction() as conn:

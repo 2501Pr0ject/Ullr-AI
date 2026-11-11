@@ -74,13 +74,14 @@ def execute_mutation(
 
         conn.execute(
             "INSERT INTO executions"
-            " (idempotency_key, tool, resource_id, request_hash, status, http_status, response)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " (idempotency_key, tool, resource_id, request_hash, args, status, http_status,"
+            " response) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 idempotency_key,
                 action.tool,
                 action.resource_id,
                 request_hash,
+                canonical_json(action.args).decode("utf-8"),
                 outcome,
                 status,
                 json.dumps(body),

@@ -3,7 +3,10 @@
 A rule names a tool, optionally a resource, the nth matching call and a hold
 point: before the effect is committed, or after it is committed but before the
 response is sent. A request that trips a rule becomes ``HELD`` until the
-controller releases it, either to continue or to be dropped.
+controller releases it, either to continue or to be dropped. A rule armed with
+``auto_release`` needs no controller: it drops the request when it trips, which
+gives the three fault effects of the task format (nothing executed and an
+error, or executed and the response lost).
 
 This is test and benchmark machinery, reachable through the admin API only.
 The wait happens outside any SQLite transaction: a held request holds no lock,
@@ -20,6 +23,7 @@ from ullr_ai.gateway.schemas import Action
 
 HOLDS = ("before_commit", "after_commit")
 RELEASE_ACTIONS = ("continue", "drop")
+AUTO_RELEASES = ("drop",)
 
 
 @dataclass(frozen=True)
@@ -28,11 +32,20 @@ class Tripped:
     hold: str
 
 
-def add(db_path: str, tool: str, resource_id: str | None, on_call: int, hold: str) -> int:
+def add(
+    db_path: str,
+    tool: str,
+    resource_id: str | None,
+    on_call: int,
+    hold: str,
+    auto_release: str | None = None,
+) -> int:
+    """Arm a rule. With ``auto_release``, it releases itself as soon as it trips."""
     with storage.transaction(db_path) as conn:
         cursor = conn.execute(
-            "INSERT INTO faults (tool, resource_id, on_call, hold) VALUES (?, ?, ?, ?)",
-            (tool, resource_id, on_call, hold),
+            "INSERT INTO faults (tool, resource_id, on_call, hold, auto_release)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (tool, resource_id, on_call, hold, auto_release),
         )
         return int(cursor.lastrowid)
 
@@ -60,7 +73,7 @@ def trip(db_path: str, action: Action, idempotency_key: str) -> Tripped | None:
     """Count this call against every armed rule it matches; hold it if one is due."""
     with storage.transaction(db_path) as conn:
         armed = conn.execute(
-            "SELECT id, on_call, calls_seen, hold FROM faults WHERE state = 'ARMED'"
+            "SELECT id, on_call, calls_seen, hold, auto_release FROM faults WHERE state = 'ARMED'"
             " AND tool = ? AND (resource_id IS NULL OR resource_id IS ?) ORDER BY id",
             (action.tool, action.resource_id),
         ).fetchall()
@@ -68,10 +81,19 @@ def trip(db_path: str, action: Action, idempotency_key: str) -> Tripped | None:
         for rule in armed:
             seen = rule["calls_seen"] + 1
             if tripped is None and seen == rule["on_call"]:
+                # A self-releasing rule goes straight to RELEASED: the wait that
+                # follows returns at once and the request takes the drop path.
+                automatic = rule["auto_release"] is not None
                 conn.execute(
-                    "UPDATE faults SET calls_seen = ?, state = 'HELD', idempotency_key = ?"
-                    " WHERE id = ?",
-                    (seen, idempotency_key, rule["id"]),
+                    "UPDATE faults SET calls_seen = ?, state = ?, release_action = ?,"
+                    " idempotency_key = ? WHERE id = ?",
+                    (
+                        seen,
+                        "RELEASED" if automatic else "HELD",
+                        rule["auto_release"],
+                        idempotency_key,
+                        rule["id"],
+                    ),
                 )
                 tripped = Tripped(rule["id"], rule["hold"])
             else:

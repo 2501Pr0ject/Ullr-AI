@@ -319,3 +319,80 @@ def test_invalid_release_is_rejected(tools, body):
     fault_id = add_fault(tools, "before_commit")
     response = tools.admin.post(f"/admin/faults/{fault_id}/release", json=body, headers=ADMIN)
     assert response.status_code == 400
+
+
+# --- Self-releasing rules (task faults) -----------------------------------------
+
+
+def auto_fault(tools, hold, **overrides):
+    body = {
+        "tool": "issue_refund",
+        "resource_id": "acct_1",
+        "on_call": 1,
+        "hold": hold,
+        "auto_release": "drop",
+        **overrides,
+    }
+    response = tools.admin.post("/admin/faults", json=body, headers=ADMIN)
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def call_now(tools, key="key-auto-0001", if_match="1"):
+    headers = {**AUTH, "Idempotency-Key": key, "If-Match": if_match}
+    return tools.executor.post("/v1/execute", json=REFUND, headers=headers)
+
+
+def test_self_releasing_fault_before_commit_executes_nothing(tools):
+    fault_id = auto_fault(tools, "before_commit")
+    response = call_now(tools)
+    assert (response.status_code, response.json()) == (
+        504,
+        {"executed": False, "error": "fault_injected"},
+    )
+    assert refunds(tools) == []
+    assert tools.state.executions() == []
+    assert fault_state(tools, fault_id)["state"] == "RELEASED"
+    assert outcome(tools, fault_id) == ("dropped", None, None)
+
+
+def test_self_releasing_fault_after_commit_executes_then_loses_the_response(tools):
+    fault_id = auto_fault(tools, "after_commit")
+    response = call_now(tools)
+    assert (response.status_code, response.json()) == (
+        504,
+        {"executed": False, "error": "fault_injected"},
+    )
+    assert len(refunds(tools)) == 1
+    assert [e["status"] for e in tools.state.executions()] == ["EXECUTED"]
+    assert outcome(tools, fault_id) == ("dropped", 200, None)
+    # The same key answers from the stored outcome: the effect is not repeated.
+    assert call_now(tools).status_code == 200
+    assert len(refunds(tools)) == 1
+
+
+def test_self_releasing_fault_trips_once_on_the_nth_call(tools):
+    auto_fault(tools, "before_commit", on_call=2)
+    assert call_now(tools, key="key-auto-0001").status_code == 200
+    assert call_now(tools, key="key-auto-0002", if_match="2").status_code == 504
+    assert call_now(tools, key="key-auto-0003", if_match="2").status_code == 200
+    assert len(refunds(tools)) == 2
+
+
+def test_self_releasing_fault_cannot_be_released_by_hand(tools):
+    fault_id = auto_fault(tools, "before_commit")
+    call_now(tools)
+    assert release(tools, fault_id, "continue").status_code == 409
+
+
+@pytest.mark.parametrize("value", ["continue", "", None, 1, True])
+def test_invalid_auto_release_is_rejected(tools, value):
+    body = {
+        "tool": "issue_refund",
+        "resource_id": None,
+        "on_call": 1,
+        "hold": "before_commit",
+        "auto_release": value,
+    }
+    assert tools.admin.post("/admin/faults", json=body, headers=ADMIN).status_code == 400
+    assert tools.admin.get("/admin/faults", headers=ADMIN).json() == {"faults": []}

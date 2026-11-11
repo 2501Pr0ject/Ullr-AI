@@ -61,8 +61,17 @@ class Controller:
         log = self._checked(self._tools.get("/admin/executions", headers=self._tools_auth))
         return {"state": state, "executions": log["executions"]}
 
-    def fault_add(self, tool: str, resource_id: str | None, on_call: int, hold: str) -> Any:
+    def fault_add(
+        self,
+        tool: str,
+        resource_id: str | None,
+        on_call: int,
+        hold: str,
+        auto_release: str | None = None,
+    ) -> Any:
         body = {"tool": tool, "resource_id": resource_id, "on_call": on_call, "hold": hold}
+        if auto_release is not None:
+            body["auto_release"] = auto_release
         return self._checked(
             self._tools.post("/admin/faults", json=body, headers=self._tools_auth), 201
         )
@@ -155,7 +164,7 @@ def main(argv: list[str]) -> int:
         result = controller.state()
     elif command == "fault-add":
         resource_id = None if args[1] == "-" else args[1]
-        result = controller.fault_add(args[0], resource_id, int(args[2]), args[3])
+        result = controller.fault_add(args[0], resource_id, int(args[2]), args[3], *args[4:5])
     elif command == "fault-list":
         result = controller.fault_list()
     elif command == "fault-release":
