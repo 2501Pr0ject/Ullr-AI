@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.4. Since v1.3: the agent networks carry no host-side IPv4 address (§3), after the first L2 run found host services reachable there; §3 states what L2 run 2 observed. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
+Status: v1.5. Since v1.4: a third agent route, read-only, gives the status of the session's own action (§8); the benchmark support of the Tools service and of the Gateway state view is described (§8, §10); what the model is shown is the same in both routings (§10). The status route was added after L2 run 2 and has not been attacked. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
 
 ## 1. Design principles
 
@@ -274,7 +274,19 @@ A session is created, and later revoked, by a trusted party (the benchmark contr
    There is no atomic transaction across the Gateway database and the Tools service. The guarantee comes from the order (intent recorded before the call, outcome after it), from the idempotency key enforced by the Tools service, and from keeping `UNKNOWN` until reconciliation.
 7. **Reconcile**, in the Gateway API process only (the admin and approver processes have no access to the Tools service): `UNKNOWN` in a background loop, and any `EXECUTING` found at start-up, when no call can be in flight. Reconciliation asks the Tools service to resolve the `execution_id` (`POST /executions/{execution_id}/resolve`). The answer is `EXECUTED` or `FAILED`. A key the Tools service has never seen is recorded there as failed in the same step, so a request lost in transit cannot execute after its budget has been released.
 
+8. **Status**, read-only: `GET /v1/actions/{id}` with the token of the session that proposed the action returns `{action_id, status, reason}`. `reason` is a fixed word derived from the status (`denied_by_policy`, `rejected_by_approver`, `approval_expired`, `approval_invalidated`, `execution_failed`, or null). It names no approver, policy rule or other session, and it changes no state. An action of another session gets the same 404 as an action that does not exist. Its purpose is to let an agent tell an approver's rejection from the other refusals of the execute route.
+
+The agent API has exactly these three routes: propose, execute, status.
+
 An approval is never restored after consumption. Any retry requires a new approval.
+
+### Benchmark support
+
+These exist for measurement and are reachable only by the trusted controller, on the admin networks.
+
+- **Faults.** A rule on the Tools admin API names a tool, optionally a resource, the nth matching call and a hold point (before or after the effect is committed). A held request waits for the controller to release it. A rule armed with `auto_release: drop` releases itself when it trips: before commit, nothing is executed and the caller gets an error; after commit, the effect is applied and the response is lost. The Gateway treats both as ambiguous (`UNKNOWN`) until reconciliation.
+- **Execution log.** Each Tools execution records its canonical arguments next to the idempotency key, tool, resource and status. A key abandoned before any request has no arguments.
+- **State view.** `GET /admin/state` on the Gateway admin application returns every action with its arguments, bound fields and stored approval record (nonce, expiry, payload, signature), the budget reservations and the audit chain check. It is read-only. It is what the bypass cross-check compares the Tools execution log with.
 
 Budgets use a rolling window on the Gateway clock. `RESERVED`, `HELD` and `COMMITTED` reservations all count against a cap. If a cap would be exceeded, the execute transaction writes nothing and the approval stays unconsumed.
 
@@ -289,7 +301,11 @@ Budgets use a rolling window on the Gateway clock. `RESERVED`, `HELD` and `COMMI
 
 ## 10. Baseline mode
 
-For the comparative experiment, the agent gets a direct client to the Tools executor API (executor token injected, agent attached to `net_tools`). Agent code, prompts, tools and scenarios are identical; only the routing changes.
+For the comparative experiment, the agent gets a direct client to the Tools executor API (executor token injected, agent attached to `net_tools`). Agent code, prompts, tools and scenarios are identical; only the routing changes. The baseline project has its own LLM relay, under the same contract.
+
+**What the model sees.** In both routings the client gives the model a normalized reply of one shape: `status` (`executed`, `refused`, `rejected`, `pending_approval` or `unknown`), `result` when executed, `error` and sometimes `reason` otherwise. Trust labels and the provenance source list are removed from everything the model sees; they are inputs of the Gateway, not of the agent. The raw service replies are kept in the transcript only. For the same seeded state and the same tool call the two routings give the model the same reply, except where the outcome itself differs (pending approval, rejection, denial by policy).
+
+**Approval wait.** After a `REQUIRE_APPROVAL`, the client polls the execute route for 20 s. When the wait expires the model is told the action is pending, and the action stays as it is: nothing is cancelled. Every call from the model is a new proposal.
 
 ## 11. Guarantee map
 
