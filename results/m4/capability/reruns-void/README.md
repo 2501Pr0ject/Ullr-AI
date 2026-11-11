@@ -1,0 +1,1 @@
+Void. These reruns ran on stacks where one Tools process had failed to start: the agent's calls to the Tools service got no reply (`http_status` null) in A01 and A04. They are kept as observed and are not used in `../summary.json`. See `../README.md`.

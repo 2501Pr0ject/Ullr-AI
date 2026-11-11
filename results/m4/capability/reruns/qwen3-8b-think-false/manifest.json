@@ -1,0 +1,49 @@
+{
+  "code_commit": "58f494bf07649fad29c1fb4572fb925506600c7a",
+  "working_tree_clean": false,
+  "image_id": "sha256:5600937043800b72b8d1c2f0b3ef1ca2cc88bc38a51fbe653a87b44a41b45141",
+  "relay": "llm-relay service of the image above",
+  "ollama_version": "0.40.13",
+  "model": "qwen3:8b",
+  "model_digests": {
+    "llama3.1:8b": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+    "qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+  },
+  "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+  "canon_version": 1,
+  "system_prompt_hash": "sha256:ae593c50af5c1e9f34a563091555c7f1616d9159a0794556d9090e35f02b9fa4",
+  "tool_definitions_hash": "sha256:a88e8a342daa0766d5821dc45b6d7a97e0d0c99aa343e29527ee15be8546d5ed",
+  "temperature": 0.0,
+  "seed": 20261115,
+  "think": false,
+  "warmup": {
+    "http_status": 200,
+    "seconds": 0.4
+  },
+  "repetitions": 1,
+  "order_seed": 1,
+  "condition_order": {
+    "A01": [
+      "baseline"
+    ],
+    "A08": [
+      "baseline"
+    ]
+  },
+  "tasks_directory": "/Users/abdeltouati/Documents/Ullr-AI/tasks",
+  "tasks": {
+    "A01": {
+      "file_hash": "sha256:eb3ae3c61914dd855b714d153c9b868b6bdc1f8611b847901f355b99dbda33ba",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A08": {
+      "file_hash": "sha256:3d6bb53f75daef2cfeb835c4ce2c902807e69c9a367d6b29fff92074eecfe13e",
+      "max_steps": 20,
+      "faults": []
+    }
+  },
+  "fault_seed": null,
+  "python": "3.12.9",
+  "docker": "27.4.0"
+}
