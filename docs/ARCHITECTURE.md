@@ -1,6 +1,6 @@
 # Architecture
 
-Status: v1.5. Since v1.4: a third agent route, read-only, gives the status of the session's own action (§8); the benchmark support of the Tools service and of the Gateway state view is described (§8, §10); what the model is shown is the same in both routings (§10). The status route was added after L2 run 2 and has not been attacked. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
+Status: v1.5. Since v1.4: a third agent route, read-only, gives the status of the session's own action (§8); the benchmark support of the Tools service and of the Gateway state view is described (§8, §10); what the model is shown is the same in both routings (§10). The approver channel has a read-only status route (§7). Both status routes were added after L2 run 2 and have not been attacked. Evidence levels: [`EVIDENCE.md`](EVIDENCE.md).
 
 ## 1. Design principles
 
@@ -60,7 +60,7 @@ This section describes the Compose configuration and the intent behind it. The s
 | `agent` (untrusted) | `net_agent`, `net_llm` | none | — |
 | `gateway-api` | `net_agent`, `net_tools` | agent | session token; the only Gateway process with Tools access |
 | `gateway-admin` (sessions, revocation, read-only state) | `net_admin` | controller | admin token; no network shared with the agent or the Tools service |
-| `gateway-approver` | `net_approval` | approver | channel token for listing, signature for decisions; no Tools network |
+| `gateway-approver` | `net_approval` | approver | channel token for listing and for reading a request's status, signature for decisions; no Tools network |
 | `tools-executor` | `net_tools` | `gateway-api` | executor token |
 | `tools-admin` | `net_control` | controller | Tools admin token |
 | `approver` | `net_approval` | none | — |
@@ -220,7 +220,7 @@ The domain-separation prefix prevents the signature from being reused in another
 
 Timestamps are UTC with microseconds, in the one format shown above. A decision that fails any check changes nothing: it cannot consume or cancel a pending approval. The same checks run again inside the execute transaction, against the registry as it is then.
 
-The approver channel is a separate Gateway application. Listing pending requests requires an approver-channel token, never mounted in the agent container; a decision is authenticated by its signature alone. A request shows the action and its arguments, the agent, the resource, the taint status and observed sources, and the agent's stated reason under a label that marks it unverified.
+The approver channel is a separate Gateway application. Listing pending requests requires an approver-channel token, never mounted in the agent container; a decision is authenticated by its signature alone. With the same token, `GET /v1/approvals/{id}` returns the current status of an action that went through approval (`{action_id, status}`), read-only: it tells an approver what became of a request it decided. The approver application has exactly these three routes. A request shows the action and its arguments, the agent, the resource, the taint status and observed sources, and the agent's stated reason under a label that marks it unverified.
 
 A session may hold at most `max_pending_per_session` pending approvals; a further proposal that would need one is denied.
 

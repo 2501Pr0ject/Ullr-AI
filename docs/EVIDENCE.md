@@ -133,5 +133,5 @@ Results are in [`results/l2/`](../results/l2/). Each run has its report; run 2 a
 - **Cross-session provenance through written resources** (a tainted session writes an internal document that a clean session reads). Not tested; a design for it is deferred.
 - **Forged decisions** against the approver application, and the **audit-order invariant** for revocation, inside the stack. Both are integration-tested only.
 - **Power loss**, as opposed to a process kill.
-- **Status route.** `GET /v1/actions/{id}` was added to the agent API after L2 run 2. It is integration-tested (owner only, 404 for another session's action, no state change); it has not been attacked from the agent container and must be part of the next L2 run.
+- **Status routes.** `GET /v1/actions/{id}` (agent API) and `GET /v1/approvals/{id}` (approver channel) were added after L2 run 2. Both are integration-tested (owner only and 404 for another session's action; channel token required; no state change). Neither has been attacked from the agent container; both must be part of the next L2 run.
 - **L3.** The harness is built and tested in process; no full run exists.
