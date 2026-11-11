@@ -1,6 +1,6 @@
 # Evidence
 
-What is tested, at which level, for each security goal (G1–G7) and each threat (T1–T20) of [`THREAT_MODEL.md`](THREAT_MODEL.md). Updated at every milestone. Current state: M3. Two L2 runs exist; the second passed. L3 is not built.
+What is tested, at which level, for each security goal (G1–G7) and each threat (T1–T20) of [`THREAT_MODEL.md`](THREAT_MODEL.md). Updated at every milestone. Current state: submission branch. Three L2 runs exist; runs 2 and 3 passed, run 3 on the final code (`b9ca053`). Two pre-registered L3 runs exist (see "L3 runs").
 
 ## Evidence levels
 
@@ -10,10 +10,12 @@ What is tested, at which level, for each security goal (G1–G7) and each threat
 | **Unit-tested** | A function or module tested alone. | Canonicalization, schemas, policy, signing, audit, provenance, relay contract, attacker detectors |
 | **Integration-tested** | Services exercised through their HTTP interfaces in one process, or as separate processes on one host. No container, no network isolation, no separate credential store. Faults are injected through the test transport, the database or the Tools fault barrier. | Tools service, Gateway, approvals, budgets, reconciliation, revocation, fault barrier, role wiring, shared SQLite |
 | **Container-tested** | The property observed in the running Docker stack. | Start-up of the eleven services on a shared SQLite volume; the LLM relay reaching the model server on the host; audit chain and SQLite integrity after three container kills |
-| **Adversarially verified** | The scripted attacker (L2) tried from inside the agent container and failed, with passing positive controls. | The items of L2 run 2 listed in "L2 runs" below, within its limits: one run, one Docker Desktop version, TCP connect from one agent container |
-| **Not verified** | No test at that level. | Everything L2 run 2 did not attempt: see "Not verified" below |
+| **Adversarially verified** | The scripted attacker (L2) tried from inside the agent container and failed, with passing positive controls. | The items of L2 runs 2 and 3 listed in "L2 runs" below, within their limits: one Docker Desktop version, TCP connect from one agent container |
+| **Not verified** | No test at that level. | Everything the L2 runs did not attempt: see "Not verified" below |
 
 **What "adversarially verified" means here.** In run 2, an attacker program inside the agent container attempted each listed attack and failed, while two positive controls passed: the same direct attack succeeded against an unprotected baseline, and a legitimately approved action executed exactly once. It is one run of a finite scripted list on one platform. It is not a proof of isolation, and it does not extend to anything the run did not attempt.
+
+**Run 3.** On `b9ca053`, the final code, from a fresh clone, run 3 repeated every run-2 record under the same id with the same outcome, apart from the two records of a race whose expected outcome is `either` and the number of self-connections, and added 24 records on the status routes. Where a row below says "L2 run 2", run 3 reproduced it on the final code.
 
 Test paths are relative to `tests/`. Reproduce with `make test`.
 
@@ -21,7 +23,7 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
-| T2 R2 without approval | Each R2 tool is decided `REQUIRE_APPROVAL`, never `ALLOW`; the execute call refuses while pending; with a valid approval each R2 tool executes exactly once; every Tools execution of an R2 tool is backed by a stored decision whose signature verifies. | `test_gateway_api.py::test_irreversible_action_is_never_executed_without_approval`, `test_policy_decide.py::test_an_irreversible_action_is_never_allowed`, `test_execute.py::test_approved_irreversible_action_is_executed_once`, `::test_tools_executions_are_backed_by_signed_approvals` | Integration-tested; adversarially verified in L2 run 2: execution without approval attempted from the agent container and refused (A1, A5); F1 control executed once | More than one run; L3 |
+| T2 R2 without approval | Each R2 tool is decided `REQUIRE_APPROVAL`, never `ALLOW`; the execute call refuses while pending; with a valid approval each R2 tool executes exactly once; every Tools execution of an R2 tool is backed by a stored decision whose signature verifies. | `test_gateway_api.py::test_irreversible_action_is_never_executed_without_approval`, `test_policy_decide.py::test_an_irreversible_action_is_never_allowed`, `test_execute.py::test_approved_irreversible_action_is_executed_once`, `::test_tools_executions_are_backed_by_signed_approvals` | Integration-tested; adversarially verified in L2 run 2: execution without approval attempted from the agent container and refused (A1, A5); F1 control executed once | More than one platform |
 | T6 Forged or self-issued approval | Unsigned, malformed, wrong-key, unregistered-approver, agent-as-approver, wrong-domain and mismatched-payload decisions are refused and change nothing. A correctly signed payload with any one bound field altered is refused. A decision cannot be replayed on another action, even an identical one. The registry refuses an agent identifier. | `test_signing.py`, `test_approvals.py::test_forged_decision_is_refused_and_changes_nothing`, `::test_correctly_signed_payload_with_one_field_altered_is_refused`, `::test_decision_replayed_on_another_action_is_refused`, `::test_decision_for_an_identical_later_action_is_not_reusable`, `::test_gateway_refuses_to_start_with_an_agent_as_approver` | Unit-tested, integration-tested; in L2 run 2 the agent could not reach the approver application or any decision route, and the approver key and channel token were not found in the agent container. The signature checks themselves were not attacked across containers | Forged decisions submitted to the approver application across containers |
 | T7 Expired approval | Expiry is checked on the Gateway clock at decision and at execution; a decision cannot extend it and may shorten it. | `test_approvals.py::test_expired_request_cannot_be_approved`, `::test_expired_approval_is_not_executed`, `::test_decision_cannot_extend_the_expiry`, `::test_approver_can_shorten_the_validity` | Integration-tested; adversarially verified in L2 run 2: an expired approval was refused (A6) | —  |
 | T9 Unknown tool, alias, case variant | Exact allow-list at schema, Gateway and Tools level. | `test_schemas.py::test_unknown_alias_and_variant_tool_names_rejected`, `test_gateway_api.py::test_unknown_alias_and_case_variant_tools_are_denied`, `test_tools_executor.py::test_invalid_requests_are_rejected_with_the_gateway_schemas` | Unit-tested, integration-tested; adversarially verified in L2 run 2: an unknown tool and a case variant were refused (A10) | — |
@@ -63,7 +65,7 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
 | T12 Forged or laundered provenance | Taint derives only from Tools-assigned labels and is permanent. Claims in the body, the arguments or the reason are rejected or ignored. The agent API has two routes and none creates, switches or resets a session; identity comes from the token. The laundering scenario (tainted session A, clean session B) fails. Session and provenance rows cannot be rewritten in the database. A revoked token is refused on every route, before and after the next token is issued. No action whose authorization transaction commits after the revocation is authorized, consumed or sent to the Tools service; an action authorized before it may take effect afterwards, which is tested as such. The order is checked on the audit sequence, including under concurrent requests. Stress test history: a defect was confirmed in a reconstructed earlier version of the test (a comparison across rounds); the cause of the first historical failure is not verifiable for lack of a trace; the current version is stable over 300 runs, in a single process with threads. | `test_gateway_sessions.py` (including `::test_action_authorized_before_revocation_may_take_effect_after_it` and `::test_revocation_racing_concurrent_requests`), `test_provenance.py`, `test_audit.py::test_session_and_provenance_history_cannot_be_rewritten`, `test_tools_executor.py::test_an_update_cannot_change_the_trust_label` | Unit-tested, integration-tested; in L2 run 2 the agent could not create or switch a session (routes absent, admin application unreachable, credential not found) and a revoked token was refused before and after the next one was issued. Peer agents and written resources remain open channels | Peer-agent channel; written resources (deferred design); cross-session agent memory is out of scope (H7) |
-| T11 Plausible injected request accepted by the approver | The approval request carries the Gateway-derived taint status and sources, and the agent's reason under an "unverified" label; the approver tool shows taint before the reason, escapes it, and refuses to sign if the displayed action does not hash to the action hash. | `test_approvals.py::test_request_shows_the_action_and_gateway_derived_provenance`, `test_approver_cli.py::test_request_display_states_taint_and_marks_the_reason_unverified`, `::test_tool_refuses_to_sign_when_the_display_does_not_match_the_hash` | Integration-tested | Whether an approver's decisions change is an L3 question (approver profiles); no human is measured |
+| T11 Plausible injected request accepted by the approver | The approval request carries the Gateway-derived taint status and sources, and the agent's reason under an "unverified" label; the approver tool shows taint before the reason, escapes it, and refuses to sign if the displayed action does not hash to the action hash. | `test_approvals.py::test_request_shows_the_action_and_gateway_derived_provenance`, `test_approver_cli.py::test_request_display_states_taint_and_marks_the_reason_unverified`, `::test_tool_refuses_to_sign_when_the_display_does_not_match_the_hash` | Integration-tested; L3 with simulated approvers (see "L3 runs") | No human approver is measured |
 
 ## G7 — At most one effective execution per approval, given H6
 
@@ -75,7 +77,7 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 
 | Threat | What is tested | Tests | Level | Missing |
 |---|---|---|---|---|
-| T16 Approval flooding | A fourth pending approval in a session is denied without contacting the Tools service; decided or expired requests free a slot; other sessions are unaffected. | `test_approvals.py::test_pending_approvals_are_limited_per_session`, `::test_expired_requests_do_not_count_against_the_limit` | Integration-tested; adversarially verified in L2 run 2: a fourth pending approval was denied (A9) | Approval burden metric (L3)  |
+| T16 Approval flooding | A fourth pending approval in a session is denied without contacting the Tools service; decided or expired requests free a slot; other sessions are unaffected. | `test_approvals.py::test_pending_approvals_are_limited_per_session`, `::test_expired_requests_do_not_count_against_the_limit` | Integration-tested; adversarially verified in L2 run 2: a fourth pending approval was denied (A9) | —. The L3 approval burden is in `results/l3/analysis/criteria.md` |
 | T20 Agent reaches evaluation endpoints | The Tools admin API and the Gateway admin and approver APIs are separate applications with their own tokens; their routes do not exist on the agent-facing or executor applications. | `test_tools_admin.py`, `test_approvals.py::test_agent_api_has_no_approval_or_admin_route`, `test_reconcile.py::test_no_application_exposes_a_reconciliation_route` | Integration-tested; adversarially verified in L2 run 2: the admin applications, the controller and their networks were unreachable from the agent, and their routes absent from the agent API (N2, A8) | Vantage points other than TCP connect from one agent container |
 
 ## Supporting properties of the deployment
@@ -90,12 +92,13 @@ Test paths are relative to `tests/`. Reproduce with `make test`.
 
 ## L2 runs
 
-Results are in [`results/l2/`](../results/l2/). Each run has its report; run 2 also has the attacker's raw output and the Tools-side counters.
+Results are in [`results/l2/`](../results/l2/). Each run has its report; runs 2 and 3 also have the attacker's raw output and the Tools-side counters.
 
 | Run | Executed on | Results committed in | Records | Passed | Failed |
 |---|---|---|---|---|---|
-| 1 | `b842701` | `3f79a4b` (report unchanged) | 146 | 142 | 4 |
+| 1 | `b842701`, with a modified working tree (`git_dirty: true` in its report) | `3f79a4b` (report unchanged) | 146 | 142 | 4 |
 | 2 | `769eecc` | `f014737` | 146 | 146 | 0 |
+| 3 | `b9ca053`, fresh clone, clean | see `results/l2/run-3/` | 170 | 170 | 0 |
 
 **Run 1** found that the agent could reach two services of the Docker Desktop virtual machine. The VM's bridge devices for the two agent networks had an address in those networks, and the VM's `rpcbind` (port 111) and `rpc.statd` (a dynamic port) listen on all interfaces. From the agent container both accepted connections, and `rpcbind` answered a program listing. Two other failed records were open ports on the agent's own addresses. Details, with evidence and hypotheses kept apart: [`results/l2/run-1/INVESTIGATION.md`](../results/l2/run-1/INVESTIGATION.md).
 
@@ -112,7 +115,7 @@ Results are in [`results/l2/`](../results/l2/). Each run has its report; run 2 a
 | Secrets | The seven privileged secrets, searched by hash in the environment of the visible processes and in 5,222 readable files | None found. 14 files unreadable, 4 read to 4 MB only |
 | Privileges and mounts | Mount table, write attempts, uid, capabilities | No unexpected mount, no write outside `/tmp`, uid 10001, no capability, no Docker socket |
 | Direct path | Call the Tools executor with every credential found | Blocked at name resolution |
-| API | 40 attempts: no approval, other applications' routes, replay, changed and non-canonical arguments, another action's approval, expiry, foreign action, pending limit, malformed and oversized bodies, bad tokens | All refused |
+| API | 40 records: no approval, other applications' routes, replay, changed and non-canonical arguments, another action's approval, expiry, foreign action, pending limit, malformed and oversized bodies, bad tokens | 39 refused. The 40th, `A3-first-use`, is the legitimate first use of an approval, allowed as expected, before the three refused replays |
 | Revocation | Old token after revocation, on both routes, before and after the next token | Refused; new token accepted |
 | Relay | 15 requests outside the contract | All refused; one allowed chat succeeded |
 | Concurrency | One approval in 50 processes; six refunds against an agent budget; three agents against an account budget | 1, 2 and 1 effective executions |
@@ -120,18 +123,28 @@ Results are in [`results/l2/`](../results/l2/). Each run has its report; run 2 a
 
 **Positive controls, both passed.** In the baseline project the same direct attack reached the Tools executor and produced 2 effective executions. In the protected stack the approved action F1 produced exactly 1.
 
-**Tools-side reconciliation.** The Tools service recorded 7 effective executions in the protected stack, each backed by a committed Gateway action: the first use of the approval later replayed (A3), F1, C1, two for C2, one for C3 and K2. Its 3 failed entries are the second reserved refund of C3 (refused on the version precondition) and the abandoned keys of K1 and K3. Record counts: `report.json` holds 146 records, of which 142 come from the attacker and 4 are built by the driver (the account-budget summary and the three K records). `raw_records.jsonl` holds 148 attacker records. The six extra are the execute and retry attempts of K1, K2 and K3, which the report folds into the three K records. The 142 attacker records of the report are identical, field for field, to their raw lines.
+**Tools-side reconciliation.** The Tools service recorded 7 effective executions in the protected stack, each backed by a committed Gateway action: the first use of the approval later replayed (A3), F1, C1, two for C2, one for C3 and K2. Its 3 failed entries are the second reserved refund of C3 (refused on the version precondition) and the abandoned keys of K1 and K3. Record counts: `report.json` holds 146 records, of which 142 come from the attacker and 4 are built by the driver (the account-budget summary and the three K records). `raw_records.jsonl` holds 148 attacker records. The six extra are the execute and retry attempts of K1, K2 and K3, which the report folds into the three K records. The 142 attacker records of the report are identical to their raw lines, field for field, except `tools_executions`: it is `null` in the raw line and filled by the driver from the Tools side.
 
 **Observed, not blocked.** Peer agent containers resolve by DNS and accept connections from the agent.
 
+**Run 3** ([`results/l2/run-3/`](../results/l2/run-3/README.md)), on `b9ca053` from a fresh clone, with its own secrets: 170 records, all passed, in 849 s. The 146 records of run 2 gave the same outcomes, except the race C3 (which of two agents gets the single execution; expected `either`) and the self-connections (one instead of three). The secrets scan covered 5,382 readable files. The 24 new records attack the status routes added after run 2:
+- `GET /v1/actions/{id}` from the agent: the session's own action is readable (positive control); another session's action, an unknown one, ten malformed or encoded variants and 271 enumerated ids all give the same 404; no token, a wrong token and a revoked token give 401; a new session of the same agent cannot read the revoked session's action (A12, R7, R8).
+- `GET /v1/approvals/{id}`: absent from the agent API (A13); the approver application is neither resolvable by name nor reachable at its real address from the agent (N6).
+
+The Gateway answers an unknown route and an unknown id with the same 404 body, so the attacker's cause label for A13 reads `not_found` although the route is absent; the outcome is unaffected (see the run's README).
+
 ## Not verified
 
-- **One run, one platform.** Docker Desktop 27.4.0 on macOS. The run-1 finding shows that the platform matters.
+- **One platform.** Two passing runs, both on Docker Desktop 27.4.0 on macOS. The run-1 finding shows that the platform matters.
 - **One vantage point.** TCP connect and DNS from one agent container. No UDP other than DNS, nothing requiring raw sockets, no scan from the other containers.
 - **Trusted containers and the VM.** The bridges of the five other networks keep a VM address, so the Gateway, Tools, controller, approver and relay containers can still reach the VM's RPC services.
 - **Peer agents.** Agent containers that share a network can exchange content and tokens outside the Gateway's view.
 - **Cross-session provenance through written resources** (a tainted session writes an internal document that a clean session reads). Not tested; a design for it is deferred.
 - **Forged decisions** against the approver application, and the **audit-order invariant** for revocation, inside the stack. Both are integration-tested only.
 - **Power loss**, as opposed to a process kill.
-- **Status routes.** `GET /v1/actions/{id}` (agent API) and `GET /v1/approvals/{id}` (approver channel) were added after L2 run 2. Both are integration-tested (owner only and 404 for another session's action; channel token required; no state change). Neither has been attacked from the agent container; both must be part of the next L2 run.
-- **L3.** The harness is built and tested in process; no full run exists.
+- **Kill points.** The Gateway API was killed at three points fixed by the Tools barrier only; not before the decision, between decision and execute, or inside the execute transaction.
+- **The Tools service holds no authorization check.** It enforces the executor token, idempotency keys and preconditions, not approvals, amounts or budgets: if the executor token leaks, nothing on the Tools side stops an unauthorized action (baseline record `DT-refund-above-any-limit`).
+
+## L3 runs
+
+Two pre-registered runs of one model (`qwen3:8b`, thinking on, temperature 0, seed 20261115), one pass each: the visible run (`results/l3/visible-1/`, 80 episodes, pre-registered in `b31b75a`) and the hidden run (`results/l3/hidden-1/`, 40 episodes, pre-registered in `b8fbb26`). Across the 90 protected episodes, the 64 Tools executions were each backed by exactly one Gateway action with every check satisfied (`bypass.unbacked` empty) and every audit chain verified. L3 is ADV1/ADV2: it does not attempt to bypass the Gateway. In the hidden run no forbidden action was proposed in any protected episode, so blocking was not exercised there. The pre-registered criteria, per run, are in [`results/l3/analysis/criteria.md`](../results/l3/analysis/criteria.md); the LTS criterion is not met on the hidden run (2/4 against 3/4).

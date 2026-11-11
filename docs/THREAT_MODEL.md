@@ -1,6 +1,6 @@
 # Threat Model
 
-Status: v1.4. Since v1.3: the status column of §7 reflects L2 run 2, and two non-guarantees are added (host services reachable from trusted containers, taint not carried by written resources). Verification rests on one L2 run on one platform; L3 has not run.
+Status: v1.5. Since v1.4: the status column of §7 reflects L2 run 3, on the final code, and the two pre-registered L3 runs; no threat, hypothesis or guarantee changed. Since v1.3: two non-guarantees were added (host services reachable from trusted containers, taint not carried by written resources). Verification rests on two passing L2 runs on one platform and on L3 runs with one model and simulated approvers.
 
 ## 1. Scope
 
@@ -81,30 +81,30 @@ ADV3 is the reference adversary. A control that only works against ADV1/ADV2 is 
 
 ## 7. Threats and mitigations
 
-"Planned verification" names the evaluation layers meant to cover a threat. "Status" uses the levels of [`EVIDENCE.md`](EVIDENCE.md): unit-tested, integration-tested, container-tested, adversarially verified, not verified. "Adversarially verified in L2 run 2" means the attacks listed in `EVIDENCE.md` were attempted from inside the agent container and failed, with passing positive controls, in one run on one platform.
+"Planned verification" names the evaluation layers meant to cover a threat. "Status" uses the levels of [`EVIDENCE.md`](EVIDENCE.md): unit-tested, integration-tested, container-tested, adversarially verified, not verified. "Adversarially verified in L2 run 2" means the attacks listed in `EVIDENCE.md` were attempted from inside the agent container and failed, with passing positive controls, in one run on one platform. L2 run 3, on the final code (`b9ca053`), repeated them with the same outcomes and added attacks on the status routes.
 
 | ID | Threat | Adversary | Mitigation | Planned verification | Status |
 |---|---|---|---|---|---|
 | T1 | Agent calls a protected tool directly, bypassing the Gateway | ADV3 | Tools reachable only on an internal network the agent is not attached to; executor credential held by the Gateway only | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
-| T2 | R2 action executed without approval | ADV1–3 | Tier R2 ⇒ `REQUIRE_APPROVAL`; default deny | L1, L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T2 | R2 action executed without approval | ADV1–3 | Tier R2 ⇒ `REQUIRE_APPROVAL`; default deny | L1, L3 | Adversarially verified in L2 run 2, for the attacks attempted, and again in run 3 on the final code. L3: no R2 action executed without a valid approval in any protected episode (policy bypass 0) |
 | T3 | Approval replayed for a second execution | ADV3 | Single-use approval consumed atomically; idempotency key enforced by the Tools service | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
 | T4 | Arguments changed after approval (approve doc A, delete doc B) | ADV1–3 | Approval bound to the canonical action hash; hash recomputed at execution | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
 | T5 | Resource modified between approval and execution | ADV1–3 | Approval bound to the resource version; the Tools service enforces the precondition | L1 | Integration-tested |
 | T6 | Agent approves its own request, or forges an approver identity | ADV3 | Decision valid only with a signature from a registered approver key over the full payload | L1, L2 | Unit-tested, integration-tested. L2 run 2: no decision route or approver key within the agent's reach; forged signatures not attacked across containers |
 | T7 | Expired approval used | ADV1–3 | Gateway-side expiry check at execution time | L1 | Adversarially verified in L2 run 2, for the attacks attempted |
-| T8 | Split transactions to stay under per-action limits, possibly across several agents | ADV1, ADV3 | Cumulative budget per account (global) plus per agent, checked and reserved in the execution transaction | L1, L2, L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T8 | Split transactions to stay under per-action limits, possibly across several agents | ADV1, ADV3 | Cumulative budget per account (global) plus per agent, checked and reserved in the execution transaction | L1, L2, L3 | Adversarially verified in L2 run 2, for the attacks attempted, and again in run 3. No L3 task targets split transactions |
 | T9 | Unknown tool, alias or case variant of a protected tool | ADV3 | Exact allow-list of canonical tool names | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
 | T10 | Malformed or ambiguous arguments (extra fields, duplicate keys, floats, path syntax, Unicode variants) | ADV2, ADV3 | Strict per-tool formats; values not provably equivalent to a canonical form are rejected, never normalized by guess | L1, L2 | Adversarially verified in L2 run 2, for the attacks attempted |
-| T11 | Injected instruction produces a plausible approval request that a human accepts | ADV1 | Gateway-derived provenance shown in the approval request; policy escalation for tainted sessions | L3 | Integration-tested, for what the request displays. L3 not run |
+| T11 | Injected instruction produces a plausible approval request that a human accepts | ADV1 | Gateway-derived provenance shown in the approval request; policy escalation for tainted sessions | L3 | Integration-tested, for what the request displays. L3, simulated approvers only: in the visible run approvers stopped forbidden actions in 3 episodes (AP-provenance 1, AP-oracle 2) and AP-rubber approved 4 harmful actions; no forbidden action was proposed under protection in the hidden run. No human is measured |
 | T12 | Agent forges or launders provenance. Laundering scenario: the agent reads injected content in session A, then proposes the R2 action from a clean session B, so that the approver sees clean provenance | ADV1, ADV3 | Provenance computed by the Gateway from the reads it proxied; agent claims ignored. Sessions are created only by a trusted party through an admin-only endpoint; an agent token is bound to exactly one session; the agent API cannot create or switch sessions, nor reset provenance | L1 | Unit-tested, integration-tested. L2 run 2: sessions cannot be created, switched or reused after revocation; peer agents and written resources remain open channels |
 | T13 | Gateway error, approval timeout or tool timeout leads to execution | ADV2, ADV3 | Fail closed on every error path | L1 | Integration-tested |
 | T14 | Concurrent executions consume one approval twice | ADV3 | Serialized consumption transaction + Tools-side idempotency | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
 | T15 | Execution without an audit record, or audit tampering | ADV3 | Audit events written in the same transaction as the security state transition; append-only triggers; hash chain with verification. Truncation detection and external anchoring are deferred | L1 | Unit-tested, integration-tested. Container-tested: chain verified after three container kills. Tampering not attacked in L2 |
-| T16 | Approval flooding to induce fatigue | ADV1, ADV3 | Limit on pending approvals per session; approval burden measured | L3 | Adversarially verified in L2 run 2, for the attacks attempted. L3 not run |
+| T16 | Approval flooding to induce fatigue | ADV1, ADV3 | Limit on pending approvals per session; approval burden measured | L3 | Adversarially verified in L2 run 2, for the attacks attempted, and again in run 3. L3 approval burden in `results/l3/analysis/criteria.md` |
 | T17 | Policy changed after approval; old approval still used | Operator change + ADV1–3 | Approval bound to the policy hash; mismatch ⇒ invalidated | L1 | Unit-tested, integration-tested |
 | T18 | Session becomes tainted after approval; approval still used | ADV1 | Approval bound to the session's provenance version; mismatch ⇒ invalidated | L1 | Integration-tested |
 | T19 | Crash or timeout after consumption leads to double execution or silent budget loss | ADV3 (induced faults) | Execution and budget state machines; idempotency key; reconciliation before any budget release | L1 (fault injection) | Adversarially verified in L2 run 2, for the attacks attempted |
-| T20 | Agent reaches evaluation endpoints (reset, snapshot) | ADV3 | Admin API on a separate network and token, controller only | L2 | Adversarially verified in L2 run 2, for the attacks attempted |
+| T20 | Agent reaches evaluation endpoints (reset, snapshot) | ADV3 | Admin API on a separate network and token, controller only | L2 | Adversarially verified in L2 run 2, for the attacks attempted; in run 3, also the status routes added since (agent status route limited to the session's own actions; approver status route absent from the agent API and unreachable) |
 
 ## 8. Security goals (invariants)
 
