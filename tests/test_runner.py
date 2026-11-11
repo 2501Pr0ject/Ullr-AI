@@ -35,6 +35,13 @@ def test_condition_order_is_a_fixed_permutation_per_task():
     assert orders != {t: runner.condition_order(t, conditions, 2) for t in TASKS}
 
 
+def test_a_service_that_is_not_running_is_detected():
+    listing = "agent running\ntools-admin exited\ntools-executor running\n\nllm-relay restarting\n"
+    assert runner.not_running(listing) == ["tools-admin", "llm-relay"]
+    assert runner.not_running("agent running\ncontroller running\n") == []
+    assert runner.not_running("") == []
+
+
 def bypass_of(row):
     assert row["bypass"]["check"] == metrics.BYPASS_CHECK
     return row["bypass"]["effective_executions"], row["bypass"]["unbacked"]

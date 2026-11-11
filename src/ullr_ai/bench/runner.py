@@ -75,10 +75,24 @@ class Stack:
         self.routing = routing
         self._compose = COMPOSE[routing]
 
-    def up(self) -> None:
-        self.down()
-        sh([*self._compose, "up", "-d", "--wait"])
-        self.controller("wait")
+    def up(self, attempts: int = 3) -> int:
+        """Create the stack; returns the number of attempts it took.
+
+        Two services that share a new SQLite volume can collide while creating
+        it, and the loser refuses to start. An episode must not run on a stack
+        with a missing service, so the stack is checked and recreated if needed.
+        """
+        for attempt in range(1, attempts + 1):
+            self.down()
+            sh([*self._compose, "up", "-d", "--wait"])
+            time.sleep(2.0)  # a service that refuses to start exits within this
+            listing = sh([*self._compose, "ps", "-a", "--format", "{{.Service}} {{.State}}"])
+            if not not_running(listing):
+                self.controller("wait")
+                return attempt
+        raise RuntimeError(
+            f"services not running after {attempts} attempts: {not_running(listing)}"
+        )
 
     def down(self) -> None:
         sh([*self._compose, "down", "-v", "--remove-orphans"])
@@ -128,6 +142,15 @@ class Stack:
             if '"relay_ready"' in line:
                 return json.loads(line)["models"]
         raise RuntimeError("the relay did not report its models")
+
+
+def not_running(listing: str) -> list[str]:
+    """Services of a ``compose ps`` listing (``service state`` per line) that are not running."""
+    return [
+        line.split()[0]
+        for line in listing.splitlines()
+        if line.strip() and line.split()[-1] != "running"
+    ]
 
 
 def condition_order(task_id: str, conditions: list[str], order_seed: int) -> list[str]:
@@ -203,7 +226,7 @@ def run_episode(
     approver = None
     approver_log: list[dict[str, Any]] = []
     try:
-        stack.up()
+        attempts = stack.up()
         timings["stack_up_s"] = round(time.monotonic() - started, 1)  # includes a prior removal
         stack.controller("seed", stdin=json.dumps(seed))
         for rule in rules:
@@ -267,6 +290,7 @@ def run_episode(
             stack.controller("revoke", session_id)
 
         row = build_row(base, task, seed, transcript, snapshot, gateway_state, registry)
+        row["stack_attempts"] = attempts
         row["relay_models"] = stack.relay_models()
         row["effective_request"] = transcript["request"]  # model, think and options as sent
         row["prompt_hashes_match"] = (
