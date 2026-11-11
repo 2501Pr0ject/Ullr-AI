@@ -8,11 +8,16 @@ are verified on every connection: a database that cannot honour them is not used
 """
 
 import sqlite3
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 _SYNCHRONOUS_FULL = 2
+
+# Start-up only: how often a "database is locked" is retried, and how long apart.
+INIT_ATTEMPTS = 20
+INIT_DELAY = 0.1
 
 
 class StorageError(RuntimeError):
@@ -34,6 +39,39 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
         conn.close()
         raise
     return conn
+
+
+def initialize(
+    db_path: Path | str,
+    schema: str | None = None,
+    *,
+    attempts: int = INIT_ATTEMPTS,
+    delay: float = INIT_DELAY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Open the database once at process start-up and create its schema.
+
+    Several processes start against one new file. Converting a new file to WAL
+    takes an exclusive lock, and SQLite reports "database is locked" to the
+    loser at once, without waiting on the busy timeout. Only that error is
+    retried, a bounded number of times; any other error, and the last
+    "database is locked", is raised as it is. The schema must be idempotent
+    (``IF NOT EXISTS`` throughout): a retry may run it again after a partial
+    run, and every process runs it.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = connect(db_path)
+            try:
+                if schema is not None:
+                    conn.executescript(schema)
+            finally:
+                conn.close()
+            return
+        except sqlite3.OperationalError as exc:
+            if str(exc) != "database is locked" or attempt == attempts:
+                raise
+        sleep(delay)
 
 
 @contextmanager

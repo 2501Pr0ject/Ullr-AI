@@ -203,8 +203,4 @@ END;
 
 
 def init_db(db_path: Path | str) -> None:
-    conn = storage.connect(db_path)
-    try:
-        conn.executescript(SCHEMA)
-    finally:
-        conn.close()
+    storage.initialize(db_path, SCHEMA)

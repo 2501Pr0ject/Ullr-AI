@@ -68,7 +68,7 @@ def _require(env: Mapping[str, str], name: str) -> str:
 
 def _check_database(path: str) -> None:
     """Fail at start-up, not at the first request, if WAL or FULL sync is unavailable."""
-    storage.connect(path).close()
+    storage.initialize(path)
 
 
 def _gateway(env: Mapping[str, str], **kwargs: Any) -> Gateway:

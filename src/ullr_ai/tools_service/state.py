@@ -169,12 +169,7 @@ class ToolsState:
 
     def __init__(self, db_path: Path | str) -> None:
         self.db_path = str(db_path)
-        conn = storage.connect(self.db_path)
-        try:
-            conn.executescript(SCHEMA)
-            conn.executescript(FAULTS_SCHEMA)
-        finally:
-            conn.close()
+        storage.initialize(self.db_path, SCHEMA + FAULTS_SCHEMA)
 
     def transaction(self):
         return storage.transaction(self.db_path)
