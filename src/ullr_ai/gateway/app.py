@@ -480,6 +480,22 @@ class Gateway:
                     views.append(approvals.request_view(conn, record))
         return 200, {"pending": views}
 
+    def approval_status(self, action_id: str) -> Reply:
+        """Current status of an action that went through approval. Read-only.
+
+        For the approver channel: what became of a request it decided.
+        """
+        if _ACTION_ID.fullmatch(action_id) is None:
+            return 404, {"error": "not_found"}
+        conn = storage.connect(self.db_path)
+        try:
+            record = approvals.record_of(conn, action_id)
+        finally:
+            conn.close()
+        if record is None:
+            return 404, {"error": "not_found"}
+        return 200, {"action_id": action_id, "status": record["status"]}
+
     def submit_decision(self, action_id: str, raw: bytes) -> Reply:
         """Accept a signed decision on a pending approval, or change nothing."""
         if _ACTION_ID.fullmatch(action_id) is None:
@@ -751,8 +767,8 @@ def create_agent_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> Fa
 
 
 def create_approver_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> FastAPI:
-    """Approver channel. Listing needs the approver-channel token; a decision is
-    authenticated by its signature alone."""
+    """Approver channel. Listing requests and reading the status of one need the
+    approver-channel token; a decision is authenticated by its signature alone."""
     app = new_app(max_body_bytes)
 
     @app.get("/v1/approvals")
@@ -760,6 +776,12 @@ def create_approver_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) ->
         if not token_matches(bearer_token(request), gateway.approver_token):
             return error(401, "unauthorized")
         return await _reply(gateway.pending_requests)
+
+    @app.get("/v1/approvals/{action_id}")
+    async def status(action_id: str, request: Request) -> JSONResponse:
+        if not token_matches(bearer_token(request), gateway.approver_token):
+            return error(401, "unauthorized")
+        return await _reply(gateway.approval_status, action_id)
 
     @app.post("/v1/approvals/{action_id}/decision")
     async def decision(action_id: str, request: Request) -> JSONResponse:

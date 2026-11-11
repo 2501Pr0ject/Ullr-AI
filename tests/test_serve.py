@@ -35,6 +35,7 @@ ROLE_ROUTES = {
     },
     "gateway-approver": {
         ("GET", "/v1/approvals"),
+        ("GET", "/v1/approvals/{action_id}"),  # read-only status of a decided request
         ("POST", "/v1/approvals/{action_id}/decision"),
     },
     "tools-executor": {
