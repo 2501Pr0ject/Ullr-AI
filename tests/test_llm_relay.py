@@ -1,6 +1,7 @@
 """LLM relay contract: one route, one upstream, allow-listed model and fields."""
 
 import json
+import os
 
 import httpx
 import pytest
@@ -226,3 +227,40 @@ def test_start_up_check_fails_when_the_upstream_is_unreachable():
     client = httpx.Client(transport=httpx.MockTransport(down), base_url="http://upstream")
     with pytest.raises(httpx.HTTPError):
         check_upstream(client, MODELS)
+
+
+# --- determinism through the relay (needs the real model) -----------------------
+
+OLLAMA_URL = os.environ.get("ULLR_TEST_OLLAMA_URL")
+
+
+@pytest.mark.skipif(OLLAMA_URL is None, reason="set ULLR_TEST_OLLAMA_URL to run against Ollama")
+def test_same_seed_and_temperature_zero_give_identical_outputs_through_the_relay():
+    """Two identical requests, tools included, through the relay code to a real Ollama."""
+    from ullr_ai.agent import prompt, tools
+
+    upstream = httpx.Client(base_url=OLLAMA_URL, timeout=600.0)
+    check_upstream(upstream, MODELS)
+    app = TestClient(create_relay_app(upstream, MODELS), base_url="http://relay")
+    request = {
+        "model": "qwen3:8b",
+        "think": False,
+        "options": {"temperature": 0, "seed": 20261115},
+        "tools": tools.definitions(),
+        "messages": [
+            {"role": "system", "content": prompt.SYSTEM_PROMPT},
+            {"role": "user", "content": "Request from the user:\nList the documents, then stop."},
+        ],
+    }
+    replies = [app.post("/api/chat", json=request) for _ in range(2)]
+    assert [reply.status_code for reply in replies] == [200, 200]
+    first, second = (reply.json()["message"] for reply in replies)
+    assert first.get("content") or first.get("tool_calls")
+
+    def without_call_ids(message):
+        calls = [{k: v for k, v in c.items() if k != "id"} for c in message.get("tool_calls", [])]
+        return {**message, "tool_calls": calls}
+
+    # Ollama attaches a random id to each tool call. It is not model output: the
+    # text, the tools called and their arguments must be identical.
+    assert without_call_ids(first) == without_call_ids(second)

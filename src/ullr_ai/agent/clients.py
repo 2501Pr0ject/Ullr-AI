@@ -3,8 +3,11 @@
 ``GatewayClient`` proposes every tool call to the Gateway with the episode's
 agent token. ``DirectToolsClient`` is the unprotected baseline: it calls the
 Tools executor API of the baseline project with that project's own executor
-token. Both forward whatever the model asked for, unknown tools included, and
-return the service's reply unchanged.
+token. Both forward whatever the model asked for, unknown tools included.
+
+An outcome carries ``reply``, the normalized reply given to the model (same
+shape in both routings, see ``replies``), and ``raw_reply``, the service's own
+reply, which goes to the transcript only.
 """
 
 import secrets
@@ -14,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from ullr_ai.agent import replies
 from ullr_ai.gateway.policy import TOOL_TIERS
 
 
@@ -65,13 +69,14 @@ class GatewayClient:
         proposed = self._clock()
         reply = _body(proposal)
         latency = {"proposal": _ms(proposed - started), "execution": None, "approval_wait": None}
-        outcome = {"http_status": proposal.status_code, "reply": reply, "execute_attempts": 0}
+        outcome = {
+            "http_status": proposal.status_code,
+            "raw_reply": reply,
+            "reply": replies.from_gateway(proposal.status_code, reply),
+            "execute_attempts": 0,
+        }
 
-        pending = (
-            proposal.status_code == 202
-            and type(reply) is dict
-            and reply.get("status") == "PENDING_APPROVAL"
-        )
+        pending = proposal.status_code == 202 and outcome["reply"]["status"] == replies.PENDING
         if pending:
             path = f"/v1/actions/{reply['action_id']}"
             deadline = proposed + self._approval_wait
@@ -81,6 +86,9 @@ class GatewayClient:
                 try:
                     attempt = self._http.post(path + "/execute", json=action, headers=self._headers)
                 except httpx.HTTPError:
+                    # The request may have reached the Gateway: the outcome is not known.
+                    outcome |= {"http_status": None, "raw_reply": None}
+                    outcome["reply"] = replies.unreachable()
                     break
                 outcome["execute_attempts"] += 1
                 answer = _body(attempt)
@@ -88,13 +96,29 @@ class GatewayClient:
                     continue
                 latency["approval_wait"] = _ms(attempt_started - proposed)
                 latency["execution"] = _ms(self._clock() - attempt_started)
-                outcome |= {"http_status": attempt.status_code, "reply": answer}
+                recorded = None
+                if attempt.status_code == 409 and answer == {"error": "not_executable"}:
+                    # Ask which refusal it is: a rejection is told to the model as one.
+                    recorded = self._status(path)
+                outcome |= {
+                    "http_status": attempt.status_code,
+                    "raw_reply": answer if recorded is None else {**answer, "action": recorded},
+                    "reply": replies.from_gateway(attempt.status_code, answer, recorded),
+                }
                 break
             else:
                 latency["approval_wait"] = _ms(self._clock() - proposed)
 
         latency["end_to_end"] = round(latency["proposal"] + (latency["execution"] or 0.0), 1)
         return {**outcome, "latency_ms": latency}
+
+    def _status(self, path: str) -> dict[str, Any] | None:
+        try:
+            response = self._http.get(path, headers=self._headers)
+        except httpx.HTTPError:
+            return None
+        body = _body(response)
+        return body if response.status_code == 200 and type(body) is dict else None
 
 
 class DirectToolsClient:
@@ -142,9 +166,11 @@ class DirectToolsClient:
         return self._outcome(started, response)
 
     def _outcome(self, started: float, response: httpx.Response) -> dict[str, Any]:
+        body = _body(response)
         return {
             "http_status": response.status_code,
-            "reply": _body(response),
+            "raw_reply": body,
+            "reply": replies.from_tools(response.status_code, body),
             "latency_ms": {"end_to_end": _ms(self._clock() - started)},
         }
 
@@ -152,6 +178,7 @@ class DirectToolsClient:
 def _unreachable(elapsed_ms: float) -> dict[str, Any]:
     return {
         "http_status": None,
-        "reply": {"error": "service_unreachable"},
+        "raw_reply": None,
+        "reply": replies.unreachable(),
         "latency_ms": {"end_to_end": elapsed_ms},
     }
