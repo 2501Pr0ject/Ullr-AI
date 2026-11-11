@@ -114,13 +114,17 @@ def test_agent_token_is_stored_hashed(env):
 # --- The agent cannot create a session ---------------------------------------
 
 
-def test_agent_api_exposes_exactly_two_routes(env):
+def test_agent_api_exposes_exactly_three_routes(env):
     routes = {
         (method, route.path)
         for route in env.agent.app.routes
         for method in getattr(route, "methods", ())
     }
-    assert routes == {("POST", "/v1/actions"), ("POST", "/v1/actions/{action_id}/execute")}
+    assert routes == {
+        ("POST", "/v1/actions"),
+        ("POST", "/v1/actions/{action_id}/execute"),
+        ("GET", "/v1/actions/{action_id}"),  # read-only status of the session's own action
+    }
 
 
 @pytest.mark.parametrize(

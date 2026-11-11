@@ -64,6 +64,16 @@ _TRANSITIONS = {
 Reply = tuple[int, dict[str, Any]]
 
 
+# Why an action will not execute, as told to the agent that proposed it.
+_STATUS_REASONS = {
+    "DENIED": "denied_by_policy",
+    "REJECTED": "rejected_by_approver",
+    "EXPIRED": "approval_expired",
+    "INVALIDATED": "approval_invalidated",
+    "FAILED": "execution_failed",
+}
+
+
 @dataclass(frozen=True)
 class Session:
     session_id: str
@@ -595,6 +605,32 @@ class Gateway:
         )
         return status, {"action_id": action_id, **body}
 
+    def action_status(self, session: Session, action_id: str) -> Reply:
+        """Status of one action, for the session that proposed it. Read-only.
+
+        Lets the agent tell a rejection from the other refusals of the execute
+        route. The reason is a fixed word derived from the status: it carries
+        nothing about the approver, the policy or any other session. An action
+        of another session is indistinguishable from one that does not exist.
+        """
+        if _ACTION_ID.fullmatch(action_id) is None:
+            return 404, {"error": "not_found"}
+        conn = storage.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT status FROM actions WHERE action_id = ? AND session_id = ?",
+                (action_id, session.session_id),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return 404, {"error": "not_found"}
+        return 200, {
+            "action_id": action_id,
+            "status": row["status"],
+            "reason": _STATUS_REASONS.get(row["status"]),
+        }
+
     # --- internal execution path ---------------------------------------------
 
     def _begin_execution(self, conn: sqlite3.Connection, action_id: str) -> str:
@@ -677,8 +713,9 @@ async def _reply(handler: Callable[..., Reply], *args: Any) -> JSONResponse:
 
 
 def create_agent_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> FastAPI:
-    """Agent-facing API. It has no route to create, switch or reset a session,
-    and none to list approvals or submit a decision."""
+    """Agent-facing API: propose, execute, and read the status of one's own action.
+    It has no route to create, switch or reset a session, and none to list
+    approvals or submit a decision."""
     app = new_app(max_body_bytes)
 
     async def session_of(request: Request) -> Session | None:
@@ -702,6 +739,13 @@ def create_agent_app(gateway: Gateway, *, max_body_bytes: int = MAX_BYTES) -> Fa
             return error(401, "unauthorized")
         raw = await request.body()
         return await _reply(gateway.execute_pending, session, action_id, raw)
+
+    @app.get("/v1/actions/{action_id}")
+    async def status(action_id: str, request: Request) -> JSONResponse:
+        session = await session_of(request)
+        if session is None:
+            return error(401, "unauthorized")
+        return await _reply(gateway.action_status, session, action_id)
 
     return app
 

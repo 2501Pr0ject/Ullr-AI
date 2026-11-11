@@ -23,7 +23,11 @@ ROLE_SECRETS = {
     "tools-admin": ["tools_admin_token"],
 }
 ROLE_ROUTES = {
-    "gateway-api": {("POST", "/v1/actions"), ("POST", "/v1/actions/{action_id}/execute")},
+    "gateway-api": {
+        ("POST", "/v1/actions"),
+        ("POST", "/v1/actions/{action_id}/execute"),
+        ("GET", "/v1/actions/{action_id}"),
+    },
     "gateway-admin": {
         ("POST", "/admin/sessions"),
         ("POST", "/admin/sessions/{session_id}/revoke"),
