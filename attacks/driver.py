@@ -484,6 +484,13 @@ def crash_case(stack: Stack, case: str, account: str) -> dict[str, Any]:
     )
 
 
+def container_addresses(stack: Stack, service: str) -> list[str]:
+    """IPv4 addresses of a running service, read on the host (the trusted side)."""
+    container = sh([*stack.compose, "ps", "-q", service]).strip()
+    template = "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"
+    return sh(["docker", "inspect", "--format", template, container]).split()
+
+
 def action_status(stack: Stack, action_id: str) -> str | None:
     for action in stack.controller("state")["actions"]:
         if action["action_id"] == action_id:
@@ -592,6 +599,9 @@ def protected_run(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
         json.dumps(ALLOWED_OPEN),
         "--peers",
         ",".join(PEERS),
+        # The approver channel's real address: the attempt must not rest on DNS alone.
+        "--approver-address",
+        container_addresses(stack, "gateway-approver")[0],
     ]
     if not args.quick:
         network.append("--full-scan")

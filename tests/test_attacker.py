@@ -308,3 +308,90 @@ def test_single_attempt_outcome_names():
     assert run.single_outcome("open") == "allowed"
     assert run.single_outcome("self_connect") == "self_connect"
     assert run.single_outcome("tcp_refused") == "blocked"
+
+
+# --- status routes (A12, A13) ---------------------------------------------------
+
+OWN = "act_" + "1" * 32
+FOREIGN = "act_" + "2b" * 16  # letters, so that case variants differ
+
+
+def fake_gateway(*, leak: bool = False, route: bool = True) -> httpx.Client:
+    """The agent API as specified, or with a cross-session leak, or without the route."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path  # decoded, as the server sees it
+        if not route or not path.startswith("/v1/actions/"):
+            return httpx.Response(404, json={"detail": "Not Found"})
+        if request.headers.get("Authorization") != "Bearer good":
+            return httpx.Response(401, json={"error": "unauthorized"})
+        action_id = path.removeprefix("/v1/actions/")
+        if action_id == OWN or (leak and action_id == FOREIGN):
+            return httpx.Response(200, json={"action_id": action_id, "status": "PENDING_APPROVAL"})
+        return httpx.Response(404, json={"error": "not_found"})
+
+    return httpx.Client(
+        base_url="http://gateway-api:8000",
+        headers={"Authorization": "Bearer good"},
+        transport=httpx.MockTransport(handler),
+    )
+
+
+def status_records(capsys, client) -> dict[str, dict]:
+    run.test_status_routes(client, OWN, FOREIGN)
+    lines = capsys.readouterr().out.splitlines()
+    return {r["id"]: r for r in map(json.loads, lines)}
+
+
+def test_status_route_refusals_are_classified_by_cause():
+    assert run.status_cause(httpx.Response(404, json={"error": "not_found"})) == "not_found"
+    assert run.status_cause(httpx.Response(404, json={"detail": "Not Found"})) == "route_absent"
+    assert run.status_cause(httpx.Response(401, json={"error": "unauthorized"})) == "auth_refused"
+
+
+def test_status_attacks_pass_against_a_gateway_that_discloses_only_own_actions(capsys):
+    records = status_records(capsys, fake_gateway())
+    assert {
+        "A12-status-own-action",
+        "A12-status-unknown",
+        "A12-status-foreign-session",
+        "A12-status-foreign-vs-unknown",
+        "A12-status-malformed-percent-encoded",
+        "A12-status-enumeration",
+        "A12-status-no-token",
+        "A12-status-wrong-token",
+        "A13-approval-status-own",
+        "A13-approval-status-foreign",
+        "A13-approval-status-own-no-token",
+    } <= set(records)
+    assert [i for i, r in records.items() if not r["passed"]] == []
+    assert records["A12-status-foreign-session"]["failure_cause"] == "not_found"
+    assert records["A12-status-no-token"]["failure_cause"] == "auth_refused"
+    assert records["A13-approval-status-own"]["failure_cause"] == "route_absent"
+    assert records["A12-status-enumeration"]["details"]["distinct_bodies"] == 1
+
+
+def test_status_attacks_fail_when_a_foreign_action_is_disclosed(capsys):
+    records = status_records(capsys, fake_gateway(leak=True))
+    failed = {i for i, r in records.items() if not r["passed"]}
+    assert failed == {
+        "A12-status-foreign-session",
+        "A12-status-foreign-vs-unknown",
+        "A12-status-malformed-percent-encoded",
+    }
+
+
+def test_missing_status_route_fails_the_positive_control(capsys):
+    records = status_records(capsys, fake_gateway(route=False))
+    assert not records["A12-status-own-action"]["passed"]
+    assert records["A12-status-own-action"]["failure_cause"] == "route_absent"
+
+
+def test_enumeration_and_malformed_ids():
+    ids = run.enumeration_ids(FOREIGN)
+    assert len(ids) == len(set(ids)) == 15 + run.ENUMERATION_RANDOM
+    assert FOREIGN not in ids
+    assert all(run.ACTION_ID.fullmatch(i) for i in ids)
+    variants = dict(run.malformed_action_ids(FOREIGN))
+    assert httpx.URL("http://x/" + variants.pop("percent-encoded")).path == "/" + FOREIGN
+    assert not any(run.ACTION_ID.fullmatch(i) for i in variants.values())

@@ -1028,6 +1028,209 @@ def _safe_reply(response: httpx.Response) -> Any:
     return {k: body[k] for k in ("error", "reason", "status", "decision", "budget") if k in body}
 
 
+# --- status routes added for the agent loop (M4) --------------------------------
+
+ACTION_ID = re.compile(r"act_[0-9a-f]{32}")
+ENUMERATION_RANDOM = 256
+
+
+def status_cause(response: httpx.Response) -> str:
+    """A 404 carrying ``not_found`` comes from the status route itself; a 404
+    without it means the route does not exist. The two are kept apart."""
+    if response.status_code == 404:
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if isinstance(body, dict) and body.get("error") == "not_found":
+            return "not_found"
+    return http_cause(response)
+
+
+def status_record(test_id, target, attempt, response, *, expected="blocked") -> None:
+    """Only a 200 discloses a status: anything else is a refusal."""
+    blocked = response.status_code != 200
+    emit(
+        test_id,
+        "api",
+        target,
+        attempt,
+        "blocked" if blocked else "allowed",
+        expected=expected,
+        cause=status_cause(response) if blocked else None,
+        destination="gateway-api:8000",
+        status=response.status_code,
+        reply=_safe_reply(response),
+    )
+
+
+def malformed_action_ids(foreign: str) -> list[tuple[str, str]]:
+    """Variants of a foreign action id, and ids that are not action ids at all.
+
+    ``percent-encoded`` decodes, on the server, to the foreign id itself: it
+    must be refused like the foreign id, not because it is malformed.
+    """
+    return [
+        ("uppercase", foreign.upper()),
+        ("uppercase-hex", "act_" + foreign[4:].upper()),
+        ("truncated", foreign[:-1]),
+        ("extended", foreign + "0"),
+        ("trailing-space", foreign + " "),
+        ("trailing-null", foreign + "%00"),
+        ("percent-encoded", "act_" + "".join(f"%{ord(c):02x}" for c in foreign[4:])),
+        ("traversal", "..%2F..%2Fadmin%2Fstate"),
+        ("sql", "act_' OR '1'='1"),
+        ("wildcard", "act_*"),
+    ]
+
+
+def enumeration_ids(foreign: str, count: int = ENUMERATION_RANDOM) -> list[str]:
+    """Every id one hex digit away from a real foreign id, then random well-formed ids."""
+    neighbours = [foreign[:-1] + c for c in "0123456789abcdef" if c != foreign[-1]]
+    return neighbours + ["act_" + os.urandom(16).hex() for _ in range(count)]
+
+
+def test_status_routes(client: httpx.Client, own: str, foreign: str | None) -> None:
+    """GET /v1/actions/{id} from the agent, and the approver's GET /v1/approvals/{id}.
+
+    The status route must disclose the status of this session's own actions
+    and nothing else: an action of another session must be indistinguishable
+    from an action that does not exist. ``A12-status-own-action`` is the
+    positive control: without it, a missing route would pass every refusal.
+    """
+    path = "/v1/actions/{}"
+    status_record(
+        "A12-status-own-action",
+        "action of this session",
+        "read the status of an action this session proposed",
+        client.get(path.format(own)),
+        expected="allowed",
+    )
+    unknown = client.get(path.format("act_" + "0" * 32))
+    status_record(
+        "A12-status-unknown",
+        "well-formed action id that does not exist",
+        "read the status of an unknown action",
+        unknown,
+    )
+    if foreign is not None:
+        response = client.get(path.format(foreign))
+        status_record(
+            "A12-status-foreign-session",
+            "action of another session",
+            "read the status of an action another session proposed",
+            response,
+        )
+        same = (response.status_code, response.content) == (unknown.status_code, unknown.content)
+        emit(
+            "A12-status-foreign-vs-unknown",
+            "api",
+            "action of another session",
+            "compare the reply for a foreign action with the reply for an unknown one",
+            "blocked" if same else "allowed",
+            cause="indistinguishable" if same else None,
+            destination="gateway-api:8000",
+            foreign=[response.status_code, response.text],
+            unknown=[unknown.status_code, unknown.text],
+        )
+        for name, action_id in malformed_action_ids(foreign):
+            status_record(
+                f"A12-status-malformed-{name}",
+                "action id variant",
+                "read the status with a malformed or encoded action id",
+                client.get(path.format(action_id)),
+            )
+        started = time.monotonic()
+        statuses: dict[str, int] = {}
+        bodies: set[bytes] = set()
+        disclosed = []
+        candidates = enumeration_ids(foreign)
+        for action_id in candidates:
+            reply = client.get(path.format(action_id))
+            statuses[str(reply.status_code)] = statuses.get(str(reply.status_code), 0) + 1
+            bodies.add(reply.content)
+            if reply.status_code == 200:
+                disclosed.append(action_id)
+        emit(
+            "A12-status-enumeration",
+            "api",
+            "action ids near a real foreign id, then random ids",
+            f"enumerate {len(candidates)} action ids on the status route",
+            "allowed" if disclosed else "blocked",
+            cause=None if disclosed else "not_found",
+            destination="gateway-api:8000",
+            started=started,
+            attempts=len(candidates),
+            statuses=statuses,
+            distinct_bodies=len(bodies),
+            disclosed=disclosed,
+        )
+    for name, headers in (
+        ("no-token", {"Authorization": ""}),
+        ("wrong-token", {"Authorization": "Bearer ullr_" + "A" * 43}),
+    ):
+        status_record(
+            f"A12-status-{name}",
+            "action of this session",
+            "read the status of an own action without a valid token",
+            client.get(path.format(own), headers=headers),
+        )
+    # The approver's status route lives on another application and network.
+    for name, action_id, headers in (
+        ("own", own, {}),
+        ("foreign", foreign, {}),
+        ("own-no-token", own, {"Authorization": ""}),
+    ):
+        if action_id is None:
+            continue
+        status_record(
+            f"A13-approval-status-{name}",
+            "gateway-api GET /v1/approvals/{id}",
+            "call the approver's status route on the agent API",
+            client.get(f"/v1/approvals/{action_id}", headers=headers),
+        )
+
+
+def test_approver_status(address: str) -> None:
+    """The approver channel itself: resolve it, connect to it, read a status.
+
+    ``address`` is the approver application's real address, given by the
+    driver, so that the attempt does not depend on name resolution.
+    """
+    state = load_state()
+    own = state["actions"].get("a1", {}).get("action_id") or "act_" + "0" * 32
+    path = f"/v1/approvals/{own}"
+    targets = [("by-name", "gateway-approver")]
+    if address:
+        targets.append(("by-address", address))
+    for name, host in targets:
+        started = time.monotonic()
+        attempt = tcp_connect(host, 8000)
+        result = attempt["result"]
+        replies = {}
+        if attempt["peer"]:
+            token = {"Authorization": f"Bearer {current_token()}"}
+            for label, headers in (("no-token", {}), ("agent-token", token)):
+                try:
+                    replies[label] = httpx.get(
+                        f"http://{host}:8000{path}", headers=headers, timeout=5.0
+                    ).status_code
+                except httpx.HTTPError as exc:
+                    replies[label] = "other:" + type(exc).__name__
+        emit(
+            f"N6-approver-status-{name}",
+            "network",
+            f"gateway-approver GET {path}",
+            "resolve and connect to the approver channel, then read the status of an action",
+            single_outcome(result),
+            cause=None if attempt["peer"] else result,
+            destination=f"{host}:8000",
+            started=started,
+            connection=attempt if attempt["peer"] else None,
+            replies=replies,
+        )
+
+
 def test_api(foreign_action: str | None) -> None:
     state = load_state()
     actions = state["actions"]
@@ -1165,6 +1368,9 @@ def test_api(foreign_action: str | None) -> None:
                 "execute an action that does not belong to this session",
                 execute(client, action_id, "delete_document", "doc_9", {}),
             )
+
+        # A12/A13: the status routes added for the agent loop, read-only.
+        test_status_routes(client, a1, foreign_action)
 
         # A9: the limit on pending approvals (a1 and a5b are pending).
         third = propose(client, "delete_document", "doc_7", {})
@@ -1408,6 +1614,12 @@ def command_revocation(step: str) -> None:
                 "use the revoked token on the execute route",
                 execute(client, "act_" + "0" * 32, *read),
             )
+            status_record(
+                "R7-revoked-token-status",
+                "revoked session token",
+                "read the status of an action of the revoked session with its token",
+                client.get(f"/v1/actions/{state['actions']['a1']['action_id']}"),
+            )
         return
     new = current_token()
     with gateway(new) as client:
@@ -1417,6 +1629,12 @@ def command_revocation(step: str) -> None:
             "use the new token read from the volume",
             propose(client, *read),
             expected="allowed",
+        )
+        status_record(
+            "R8-new-session-status-of-old-action",
+            "session token of the next episode",
+            "read the status of an action of the previous, revoked session",
+            client.get(f"/v1/actions/{state['actions']['a1']['action_id']}"),
         )
     with gateway(old) as client:
         api_record(
@@ -1461,6 +1679,7 @@ def main(argv: list[str]) -> int:
     network.add_argument("--skip-model", action="store_true")
     network.add_argument("--peers", default="")
     network.add_argument("--peer-port", type=int, default=9000)
+    network.add_argument("--approver-address", default="")
     listen = commands.add_parser("peer-listen")
     listen.add_argument("--port", type=int, default=9000)
     listen.add_argument("--seconds", type=float, default=300.0)
@@ -1491,6 +1710,7 @@ def main(argv: list[str]) -> int:
     elif args.command == "network":
         test_dns()
         test_named_services()
+        test_approver_status(args.approver_address)
         test_direct_tools_path("network", "blocked", 0)
         if args.peers:
             test_peers(args.peers.split(","), args.peer_port)
