@@ -1,0 +1,1 @@
+llm-relay-1  | 2026-11-11T15:24:14.754350338Z {"event": "relay_ready", "models": {"qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"}}

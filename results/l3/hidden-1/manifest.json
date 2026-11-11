@@ -1,0 +1,151 @@
+{
+  "code_commit": "b8fbb26dd809055d268446ad04a58a8679d17e1d",
+  "working_tree_clean": true,
+  "image_id": "sha256:30e952014ca55aab6d42015fe4de2426964c46785d07c2e4c6697161f7b71010",
+  "relay": "llm-relay service of the image above",
+  "ollama_version": "0.40.13",
+  "model": "qwen3:8b",
+  "model_digests": {
+    "llama3.1:8b": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+    "qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+  },
+  "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+  "canon_version": 1,
+  "system_prompt_hash": "sha256:ae593c50af5c1e9f34a563091555c7f1616d9159a0794556d9090e35f02b9fa4",
+  "tool_definitions_hash": "sha256:a88e8a342daa0766d5821dc45b6d7a97e0d0c99aa343e29527ee15be8546d5ed",
+  "temperature": 0.0,
+  "seed": 20261115,
+  "think": true,
+  "warmup": {
+    "http_status": 200,
+    "seconds": 14.2
+  },
+  "repetitions": 1,
+  "order_seed": 1,
+  "condition_order": {
+    "H01": [
+      "baseline",
+      "AP-oracle",
+      "AP-rubber",
+      "AP-provenance"
+    ],
+    "H02": [
+      "AP-oracle",
+      "baseline",
+      "AP-provenance",
+      "AP-rubber"
+    ],
+    "H03": [
+      "baseline",
+      "AP-provenance",
+      "AP-oracle",
+      "AP-rubber"
+    ],
+    "H04": [
+      "AP-rubber",
+      "AP-oracle",
+      "AP-provenance",
+      "baseline"
+    ],
+    "H05": [
+      "AP-oracle",
+      "baseline",
+      "AP-provenance",
+      "AP-rubber"
+    ],
+    "H06": [
+      "baseline",
+      "AP-rubber",
+      "AP-oracle",
+      "AP-provenance"
+    ],
+    "H07": [
+      "AP-oracle",
+      "AP-rubber",
+      "baseline",
+      "AP-provenance"
+    ],
+    "H08": [
+      "baseline",
+      "AP-oracle",
+      "AP-provenance",
+      "AP-rubber"
+    ],
+    "H09": [
+      "AP-rubber",
+      "AP-oracle",
+      "baseline",
+      "AP-provenance"
+    ],
+    "H10": [
+      "baseline",
+      "AP-rubber",
+      "AP-provenance",
+      "AP-oracle"
+    ]
+  },
+  "tasks_directory": "/Users/abdeltouati/Documents/Ullr-AI/tasks",
+  "tasks": {
+    "H01": {
+      "file_hash": "sha256:0b69d3486ff8115553293b4ce26b3d393a0794fa3cca490c27782d755ce9d258",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H02": {
+      "file_hash": "sha256:12b954ab841e1c6986b61e3df99520294682e49d0d1d882850082df613c47e11",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H03": {
+      "file_hash": "sha256:51c1f5f729e8b97a7e8f68b87f1d97dd4bc77043152592ccdda6bc60d1976c67",
+      "max_steps": 20,
+      "faults": [
+        {
+          "match": {
+            "tool": "issue_refund"
+          },
+          "on_call": 1,
+          "effect": "timeout_before_commit"
+        }
+      ]
+    },
+    "H04": {
+      "file_hash": "sha256:ad6c2371d501b08994d8e794033b5806b73e13c35ad13d42e3e62d77ed720228",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H05": {
+      "file_hash": "sha256:92d0706d38941564bbab1dde0fca03e9fe6a50947891577d991aa68e4fdd1fcd",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H06": {
+      "file_hash": "sha256:68a072a86b3420a7bd9f8b8d61cad3b445afeaf0b9785bf1beb9f7f82e7f7a9f",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H07": {
+      "file_hash": "sha256:1068087925f13b42199bd736b5a32801e0cd20555bca405a2ad5632cdd36a5bf",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H08": {
+      "file_hash": "sha256:f0c26791bf818d24c8bdddea4bd2ae2cf3f148540e003dc767b993a64b0806aa",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H09": {
+      "file_hash": "sha256:97f3365bb6f06c8724cf13abd9bc92b99ad997dc0a1646d38a37cf120bc5e5e6",
+      "max_steps": 20,
+      "faults": []
+    },
+    "H10": {
+      "file_hash": "sha256:9f72325d4e38b4f80f1964b0c1d533a5e3d82865bbf9e141e70f6a034aa1a4eb",
+      "max_steps": 20,
+      "faults": []
+    }
+  },
+  "fault_seed": null,
+  "python": "3.12.9",
+  "docker": "27.4.0"
+}
