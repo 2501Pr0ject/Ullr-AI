@@ -1,0 +1,1307 @@
+{
+  "protected": {
+    "tools": {
+      "effective_executions": 7,
+      "refunds_by_account": {
+        "acct_1": 1,
+        "acct_3": 1,
+        "acct_13": 1,
+        "acct_10": 1,
+        "acct_20": 1,
+        "acct_26": 1
+      },
+      "deleted_documents": [],
+      "modified_documents": [],
+      "outbound_mail": 1,
+      "config_changed": [],
+      "execution_log": [
+        {
+          "idempotency_key": "exec_e7d3e8ce3a04f21ea05e66109b523dd1",
+          "tool": "issue_refund",
+          "resource_id": "acct_1",
+          "request_hash": "4181e887887f973e261d0c74c9496fe3a4ba2f7436c2a4dbdf095fec0bdb5c25",
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_50c7d12c65b9b700be40e8b7a0c98408",
+          "tool": "send_email",
+          "resource_id": null,
+          "request_hash": "48d0908a0bc47a1fdb990a683d76c164be4c9ea9eb9b189e056752d8707ffef3",
+          "args": {
+            "body": "Approved message.",
+            "subject": "L2 functional",
+            "to": "contact_1"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_cd7d38c0ef7e4ffcc12816e82cb0b8c4",
+          "tool": "issue_refund",
+          "resource_id": "acct_3",
+          "request_hash": "04a5bcc6f25376df90689d5afa787a70614f5feea5b9bcaf05f96007387364db",
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_7f44c82915738848bc81fa1e44f62b86",
+          "tool": "issue_refund",
+          "resource_id": "acct_13",
+          "request_hash": "f4694bdfebbb36e2050613e2fdb4ffe7e1f61cc1bf4248f0fd566d0f3adccb57",
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_c73d0663906ed19ceb630df66911994e",
+          "tool": "issue_refund",
+          "resource_id": "acct_10",
+          "request_hash": "1f4b85ad3f2635f396f9915365ade66e50194465b68c45e4d5a5ec543d7e3bf7",
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_31b8ffe5b7c7923befc378f713042597",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "request_hash": "8a8ec04e35f8ebeb09c9aa6d1710fc4ce97bb15e431f01416de11ff6216712ce",
+          "args": {
+            "amount": "400.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_89442305193fd5279a9e7adb5475172e",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "request_hash": "8a8ec04e35f8ebeb09c9aa6d1710fc4ce97bb15e431f01416de11ff6216712ce",
+          "args": {
+            "amount": "400.00",
+            "currency": "EUR"
+          },
+          "status": "FAILED",
+          "http_status": 412
+        },
+        {
+          "idempotency_key": "exec_92b364e543182153ed5f4c96a03088c1",
+          "tool": "issue_refund",
+          "resource_id": "acct_26",
+          "request_hash": "ccc424768cbfc34d1f5152f3ad1c0b8403b4a96bc8c6fc51b5e9eed5ac643e80",
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "exec_8977d220395217471412bf52c0adde62",
+          "tool": "issue_refund",
+          "resource_id": "acct_25",
+          "request_hash": "abandoned",
+          "args": null,
+          "status": "FAILED",
+          "http_status": 409
+        },
+        {
+          "idempotency_key": "exec_975320a0da315d3e9d636decbf8eee19",
+          "tool": "issue_refund",
+          "resource_id": "acct_27",
+          "request_hash": "abandoned",
+          "args": null,
+          "status": "FAILED",
+          "http_status": 409
+        }
+      ]
+    },
+    "gateway": {
+      "actions": [
+        {
+          "action_id": "act_c96eb8a8cbdeb5e02335b941f08653d3",
+          "session_id": "sess_2de449b9c2f3dd853d20a331cded90d0",
+          "agent_id": "agent_2",
+          "tool": "delete_document",
+          "resource_id": "doc_10",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:bfeca2607a34bcbae5bce1c4e4c03648081c5f5fa43d689c30926d04d11a58cf",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:03.340949Z",
+          "approval": {
+            "nonce": "cd3ae29dbfe8d3e4cb932659932083bc",
+            "expires_at": "2026-11-11T23:13:03.341032Z",
+            "approver_id": null,
+            "decision": null,
+            "signature": null,
+            "payload": null,
+            "decided_at": null
+          }
+        },
+        {
+          "action_id": "act_8f024e7c4bfa041edb5898aa4be50698",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_1",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:77ecbf1c5826d274f4b80a2a1be7a80b031f11cb1af8ebe7912732d3c808fa38",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_e7d3e8ce3a04f21ea05e66109b523dd1",
+          "created_at": "2026-11-11T23:08:03.854618Z",
+          "approval": {
+            "nonce": "6b2fb15017399935c19cfc333881f944",
+            "expires_at": "2026-11-11T23:13:03.854698Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "dZiCppyGQ0/HW4ZVBWcgab+utsMNAkakgi8D4U2FJcqY3/6vP7Ie46v/MuLt0zqfRbxdB0jVcdEjYmR8GxYQBw==",
+            "payload": {
+              "action_hash": "sha256:77ecbf1c5826d274f4b80a2a1be7a80b031f11cb1af8ebe7912732d3c808fa38",
+              "action_id": "act_8f024e7c4bfa041edb5898aa4be50698",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:03.854698Z",
+              "issued_at": "2026-11-11T23:08:04.487018Z",
+              "nonce": "6b2fb15017399935c19cfc333881f944",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_1",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:04.488643Z"
+          }
+        },
+        {
+          "action_id": "act_f5875c41ba422820c01b5e59555db22f",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_2",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:848c91f1ab773938e844ddaef6cb3217fb00b387e246a0f7435fad9ce398de30",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:03.860079Z",
+          "approval": {
+            "nonce": "b4fe67a4424aed5875543ac04495c194",
+            "expires_at": "2026-11-11T23:13:03.860149Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "dfu6lL9Y8DbP8PkXLwV7kW8KGIYIaNkgUIi/ZsbarIgKTooSgvdlhA2dVIubZZXXhqJRBGXBfcd17mJcysy+Cw==",
+            "payload": {
+              "action_hash": "sha256:848c91f1ab773938e844ddaef6cb3217fb00b387e246a0f7435fad9ce398de30",
+              "action_id": "act_f5875c41ba422820c01b5e59555db22f",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:03.860149Z",
+              "issued_at": "2026-11-11T23:08:05.100870Z",
+              "nonce": "b4fe67a4424aed5875543ac04495c194",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "doc_2",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "delete_document"
+            },
+            "decided_at": "2026-11-11T23:08:05.102123Z"
+          }
+        },
+        {
+          "action_id": "act_b40a125e27ebc0bd681c836e4ee4a1fd",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_2",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:c50df0344c5132164e4009651ad23450e347cde504df4de79e5bb7797c68a6ce",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:03.864122Z",
+          "approval": {
+            "nonce": "c753ab04807a62f2848ac2927e91c65e",
+            "expires_at": "2026-11-11T23:13:03.864189Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "rRBkXPqPtO4iuZoKIP3jOWToKycPW0J8OXCWG5Ek2It7A6CqSMI3iBWKYL5/UL00qQVI7xweAWmqW6qLQ7DYAA==",
+            "payload": {
+              "action_hash": "sha256:c50df0344c5132164e4009651ad23450e347cde504df4de79e5bb7797c68a6ce",
+              "action_id": "act_b40a125e27ebc0bd681c836e4ee4a1fd",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:03.864189Z",
+              "issued_at": "2026-11-11T23:08:05.707954Z",
+              "nonce": "c753ab04807a62f2848ac2927e91c65e",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_2",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:05.709205Z"
+          }
+        },
+        {
+          "action_id": "act_fc1c005f59ca451599b453484a933b7d",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_4",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:bb1ed4f61a9afc5b51e33a5f9fd751b0b12e5fb4f8301f120de35813a76acff3",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:06.230130Z",
+          "approval": {
+            "nonce": "519caf12daf23acd3c9c9113f29dedb9",
+            "expires_at": "2026-11-11T23:13:06.230215Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "SRl8i9cDQzSFUTYkJoCjIptmQOd3h9hfDRjsMNAtsjrX4Xtm+f8MLddhazCMhf5AnASD1znOLThq5TzCryyDAA==",
+            "payload": {
+              "action_hash": "sha256:bb1ed4f61a9afc5b51e33a5f9fd751b0b12e5fb4f8301f120de35813a76acff3",
+              "action_id": "act_fc1c005f59ca451599b453484a933b7d",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:06.230215Z",
+              "issued_at": "2026-11-11T23:08:06.835520Z",
+              "nonce": "519caf12daf23acd3c9c9113f29dedb9",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "doc_4",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "delete_document"
+            },
+            "decided_at": "2026-11-11T23:08:06.836759Z"
+          }
+        },
+        {
+          "action_id": "act_b2138daace17a143986810a278d5c7f8",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_6",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:89570a3366756dfdf9ac5e84952b6d14ca54f458f6969ad72dab8360d36145e5",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "EXPIRED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:06.236249Z",
+          "approval": {
+            "nonce": "e972a3f3435a3d1b802db84be047e528",
+            "expires_at": "2026-11-11T23:13:06.236320Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "BuqP9d/SMeq87PTon6a+Mm5nZfDko3e/ZU535dMtq3JF7ZD8p9fFdQTZWpICtiuUMn9KU1ie57RnlHYiheCvBQ==",
+            "payload": {
+              "action_hash": "sha256:89570a3366756dfdf9ac5e84952b6d14ca54f458f6969ad72dab8360d36145e5",
+              "action_id": "act_b2138daace17a143986810a278d5c7f8",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:08:09.443128Z",
+              "issued_at": "2026-11-11T23:08:07.443128Z",
+              "nonce": "e972a3f3435a3d1b802db84be047e528",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "doc_6",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "delete_document"
+            },
+            "decided_at": "2026-11-11T23:08:07.444406Z"
+          }
+        },
+        {
+          "action_id": "act_f2628e93d16c37d3acfac6ee2289b4f7",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "issue_refund",
+          "resource_id": "acct_3",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:00fdacfbc0a27f2fc9bc0fae0c8a27785f7d9369839c6a7a93d1a3801c9718cc",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_cd7d38c0ef7e4ffcc12816e82cb0b8c4",
+          "created_at": "2026-11-11T23:08:06.239765Z",
+          "approval": {
+            "nonce": "52e79c5fe26e8cfc7f1457e7743cd174",
+            "expires_at": "2026-11-11T23:13:06.239828Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "o778sWLfwMdknMlnbdLdS9VsorkEQAvqoGDhL6vgUWJUt6+LQZfONDkd0CWghjECeE04cxfMqgeXHuqZNz9wDQ==",
+            "payload": {
+              "action_hash": "sha256:00fdacfbc0a27f2fc9bc0fae0c8a27785f7d9369839c6a7a93d1a3801c9718cc",
+              "action_id": "act_f2628e93d16c37d3acfac6ee2289b4f7",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:06.239828Z",
+              "issued_at": "2026-11-11T23:08:08.073056Z",
+              "nonce": "52e79c5fe26e8cfc7f1457e7743cd174",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_3",
+              "resource_version": 1,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:08.074299Z"
+          }
+        },
+        {
+          "action_id": "act_4f061c72847712b0595ed6c2e4442e0b",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "send_email",
+          "resource_id": null,
+          "resource_version": 0,
+          "args": {
+            "body": "Approved message.",
+            "subject": "L2 functional",
+            "to": "contact_1"
+          },
+          "action_hash": "sha256:712f61490378201ea54684784b4c84b55f42ff143fa1c834db2588b61c254799",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_50c7d12c65b9b700be40e8b7a0c98408",
+          "created_at": "2026-11-11T23:08:08.580808Z",
+          "approval": {
+            "nonce": "8495dff1c26777868f2bffdd8dd4f821",
+            "expires_at": "2026-11-11T23:13:08.580908Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "N7+6xDXlsQhSazUOnXVgOp40cSw7hI41Z5vTqorFETQltMSrQZTYDo7/nNQuHGKsOwDlLR18h3HM2qRLeVdQAQ==",
+            "payload": {
+              "action_hash": "sha256:712f61490378201ea54684784b4c84b55f42ff143fa1c834db2588b61c254799",
+              "action_id": "act_4f061c72847712b0595ed6c2e4442e0b",
+              "agent_id": "agent_1",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:08.580908Z",
+              "issued_at": "2026-11-11T23:08:09.182136Z",
+              "nonce": "8495dff1c26777868f2bffdd8dd4f821",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": null,
+              "resource_version": 0,
+              "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+              "tool": "send_email"
+            },
+            "decided_at": "2026-11-11T23:08:09.183415Z"
+          }
+        },
+        {
+          "action_id": "act_56fdb1c2872fc8b242f3da8ae9e2ab2e",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_1",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:30379baebaa93ee5c61547d43fd5efcda5bd3874e9dc43f21d3edfc3c4e54b81",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:15.427938Z",
+          "approval": {
+            "nonce": "81222f9ec60b83fbc547677b09eaa9dc",
+            "expires_at": "2026-11-11T23:13:15.428019Z",
+            "approver_id": null,
+            "decision": null,
+            "signature": null,
+            "payload": null,
+            "decided_at": null
+          }
+        },
+        {
+          "action_id": "act_5464c6c1f46adbdf24654e0f0c674f75",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_5",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:1aa73f0dbe685307f3522a663cdd38ec63d96c1c4e4c94626f82bee7b280917b",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:15.462668Z",
+          "approval": {
+            "nonce": "56ef9d0b3d8d40e7a68044b2d23e33c4",
+            "expires_at": "2026-11-11T23:13:15.462739Z",
+            "approver_id": null,
+            "decision": null,
+            "signature": null,
+            "payload": null,
+            "decided_at": null
+          }
+        },
+        {
+          "action_id": "act_47e92b03ea94a21be6de3a7bdd312dc6",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_7",
+          "resource_version": 1,
+          "args": {},
+          "action_hash": "sha256:8eccf7313320507af30d5554cbba922c9bab45085081a8883999a5b6e7368744",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:15.725652Z",
+          "approval": {
+            "nonce": "c708f10ceb01dd0c0f93bfa8dee1e747",
+            "expires_at": "2026-11-11T23:13:15.725727Z",
+            "approver_id": null,
+            "decision": null,
+            "signature": null,
+            "payload": null,
+            "decided_at": null
+          }
+        },
+        {
+          "action_id": "act_55c8469fa0b34be94bd5d4c02eddb63a",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "delete_document",
+          "resource_id": "doc_8",
+          "resource_version": 0,
+          "args": {},
+          "action_hash": "sha256:4cf0a7ea14a53cf03558685fabb1e4bf8bfdb790d7117e0203501c8cb6eaab28",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "DENIED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:15.730001Z",
+          "approval": null
+        },
+        {
+          "action_id": "act_e8167e6a62159b047e1886a0c46afbb1",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "resource_version": 0,
+          "args": {},
+          "action_hash": "sha256:05b3e8e73ccff53882d846a82412eede21fa07547cccc469d3b6b87da54060fb",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_5971410c1543966cfc93d141ea7668b3",
+          "created_at": "2026-11-11T23:08:15.743136Z",
+          "approval": null
+        },
+        {
+          "action_id": "act_3dd327f0e0885dc19a737e328bfee8dd",
+          "session_id": "sess_8fc314e4d2e50a756557e17c1ac27499",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "resource_version": 0,
+          "args": {},
+          "action_hash": "sha256:05b3e8e73ccff53882d846a82412eede21fa07547cccc469d3b6b87da54060fb",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_c1cfef6a9272da3565b2049758d1b673",
+          "created_at": "2026-11-11T23:08:17.724097Z",
+          "approval": null
+        },
+        {
+          "action_id": "act_aeb290ea24e14b37b0db7b06efed998f",
+          "session_id": "sess_3d26176eaf4882f6008e8bcd59d4b8b7",
+          "agent_id": "agent_1",
+          "tool": "read_document",
+          "resource_id": "doc_9",
+          "resource_version": 0,
+          "args": {},
+          "action_hash": "sha256:05b3e8e73ccff53882d846a82412eede21fa07547cccc469d3b6b87da54060fb",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_6c08f57c2178e108e6e6a4a83af17ba1",
+          "created_at": "2026-11-11T23:08:20.508198Z",
+          "approval": null
+        },
+        {
+          "action_id": "act_3fb657d866a5b4124bba0e3b3dff120a",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_10",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:50947ffe984055dc8407a4cf3a50e0e952bf1500e35e58395c36d4de8e0437cb",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_c73d0663906ed19ceb630df66911994e",
+          "created_at": "2026-11-11T23:08:22.798493Z",
+          "approval": {
+            "nonce": "ce2925d7b81d55b90255105d1ead05b2",
+            "expires_at": "2026-11-11T23:13:22.798574Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "1tD1a09qrz8RoP1Lt2m6n+8e8lFxyr+9T4wmWjEZAKOYcxNC32u/lfx0TSso4t/rj004admyYh+KruIMsrAEAg==",
+            "payload": {
+              "action_hash": "sha256:50947ffe984055dc8407a4cf3a50e0e952bf1500e35e58395c36d4de8e0437cb",
+              "action_id": "act_3fb657d866a5b4124bba0e3b3dff120a",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:22.798574Z",
+              "issued_at": "2026-11-11T23:08:23.408124Z",
+              "nonce": "ce2925d7b81d55b90255105d1ead05b2",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_10",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:23.409417Z"
+          }
+        },
+        {
+          "action_id": "act_0f873bf97170c49bf7ff0af31bdc83a4",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_11",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:7989786ae2ba0a64db9c7e2ade200b095f343aa6de875d9dbcacd91faa5bc54d",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:23.930264Z",
+          "approval": {
+            "nonce": "20624b8cbfb79e6be9d0f86aecffd8e8",
+            "expires_at": "2026-11-11T23:13:23.930345Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "YMQXws1ajfgLHu9yGR/y38wi8IJIexjc8EJqydAkrGbhyw1s2KXvRd0mo/09R31yuOG/YWPGOXVmn+r5Hxb5Dg==",
+            "payload": {
+              "action_hash": "sha256:7989786ae2ba0a64db9c7e2ade200b095f343aa6de875d9dbcacd91faa5bc54d",
+              "action_id": "act_0f873bf97170c49bf7ff0af31bdc83a4",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:23.930345Z",
+              "issued_at": "2026-11-11T23:08:24.537463Z",
+              "nonce": "20624b8cbfb79e6be9d0f86aecffd8e8",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_11",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:24.538696Z"
+          }
+        },
+        {
+          "action_id": "act_fa7ee2707c3af1c66e1737531ef8d0dd",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_12",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:8aab3759878db860761d37eda96988f76b0d488e1f293521a45a3790f76279e0",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:25.057997Z",
+          "approval": {
+            "nonce": "3ee80097053fd6b47004d13cf78f1eb6",
+            "expires_at": "2026-11-11T23:13:25.058078Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "BRfGdlDC6kBEoUfSYenXq6dk5+gTgfryFRVSwuL/+qjgoQ3mJ2HLuVN6Tvv0F/UwePQ3VST7l1+JEAYc35t3CA==",
+            "payload": {
+              "action_hash": "sha256:8aab3759878db860761d37eda96988f76b0d488e1f293521a45a3790f76279e0",
+              "action_id": "act_fa7ee2707c3af1c66e1737531ef8d0dd",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:25.058078Z",
+              "issued_at": "2026-11-11T23:08:25.649734Z",
+              "nonce": "3ee80097053fd6b47004d13cf78f1eb6",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_12",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:25.650979Z"
+          }
+        },
+        {
+          "action_id": "act_3b650e0708d6f1e206f831c0459949ff",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_13",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:f9979c663c2ea8cc4b53c8666101c5ce24dfd989121185b93ad013e5a9cb860a",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_7f44c82915738848bc81fa1e44f62b86",
+          "created_at": "2026-11-11T23:08:26.178549Z",
+          "approval": {
+            "nonce": "849daa3b3c8e6760bc4d55441616880d",
+            "expires_at": "2026-11-11T23:13:26.178630Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "IpVn8AivuKVr/2VH3/jT3sM9e0ZB3Slnr2WgX49RpNcYpHh7kWd+dkbafIo0x06+EQXW8hlEGEgI4z5lobe/AQ==",
+            "payload": {
+              "action_hash": "sha256:f9979c663c2ea8cc4b53c8666101c5ce24dfd989121185b93ad013e5a9cb860a",
+              "action_id": "act_3b650e0708d6f1e206f831c0459949ff",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:26.178630Z",
+              "issued_at": "2026-11-11T23:08:26.781046Z",
+              "nonce": "849daa3b3c8e6760bc4d55441616880d",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_13",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:26.782298Z"
+          }
+        },
+        {
+          "action_id": "act_04c8cfeb3429ca11411ac8ba2ad8990b",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_14",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:452b752018d4e65ae5d26c5021725754c46742b68c36b5c5e697907bf12df8ef",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:27.313048Z",
+          "approval": {
+            "nonce": "52ac18d5afbc5dd71d842f467f712fb4",
+            "expires_at": "2026-11-11T23:13:27.313128Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "Iu3mz7dicL8cWcuSK7t8HbvC9zbj7/YTxjzktTE20iRZoNP0Lrq3DfhzQZKTb8ggg6hH5opsBWr6GxMsGZqTAQ==",
+            "payload": {
+              "action_hash": "sha256:452b752018d4e65ae5d26c5021725754c46742b68c36b5c5e697907bf12df8ef",
+              "action_id": "act_04c8cfeb3429ca11411ac8ba2ad8990b",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:27.313128Z",
+              "issued_at": "2026-11-11T23:08:27.910868Z",
+              "nonce": "52ac18d5afbc5dd71d842f467f712fb4",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_14",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:27.912169Z"
+          }
+        },
+        {
+          "action_id": "act_4c0ab91fc60915d9495c07933a888cf2",
+          "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+          "agent_id": "agent_21",
+          "tool": "issue_refund",
+          "resource_id": "acct_15",
+          "resource_version": 1,
+          "args": {
+            "amount": "250.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:fbcb1c1f428f9e328fe2bfc0aeffcc867cd2bdd8e01962379ce3cb428030488b",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "INVALIDATED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:28.418217Z",
+          "approval": {
+            "nonce": "90340d8e112f516a4755567b5f7a3095",
+            "expires_at": "2026-11-11T23:13:28.418298Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "BUZ1aJSJPfj5LN/DZajSLUMPviaBBpYidaLovm0T/GEDS7c7+wuMKcNCSs5Rk4s2X2z9aI41MGDS1TEYx9LsDQ==",
+            "payload": {
+              "action_hash": "sha256:fbcb1c1f428f9e328fe2bfc0aeffcc867cd2bdd8e01962379ce3cb428030488b",
+              "action_id": "act_4c0ab91fc60915d9495c07933a888cf2",
+              "agent_id": "agent_21",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:28.418298Z",
+              "issued_at": "2026-11-11T23:08:29.017131Z",
+              "nonce": "90340d8e112f516a4755567b5f7a3095",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_15",
+              "resource_version": 1,
+              "session_id": "sess_c92a1ca3c2008aaa7d3ccea61df5f1b7",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:29.018365Z"
+          }
+        },
+        {
+          "action_id": "act_68f105bb599c116b42edf116f437747c",
+          "session_id": "sess_56ce82cdd1148f4bf2a9abc8a42aef10",
+          "agent_id": "agent_11",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "resource_version": 1,
+          "args": {
+            "amount": "400.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_31b8ffe5b7c7923befc378f713042597",
+          "created_at": "2026-11-11T23:08:31.901870Z",
+          "approval": {
+            "nonce": "97130734572f7426549d4ecbf6769cd0",
+            "expires_at": "2026-11-11T23:13:31.901956Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "MsiW/mIjHf1SCjH34gG8mtc6ZRICtZxxIs+KBTUR5Sg12OSbvop+k4OxvKv080CfLdnpRtaFpcfSPOrwJdJ+CA==",
+            "payload": {
+              "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+              "action_id": "act_68f105bb599c116b42edf116f437747c",
+              "agent_id": "agent_11",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:31.901956Z",
+              "issued_at": "2026-11-11T23:08:32.515903Z",
+              "nonce": "97130734572f7426549d4ecbf6769cd0",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_20",
+              "resource_version": 1,
+              "session_id": "sess_56ce82cdd1148f4bf2a9abc8a42aef10",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:32.517145Z"
+          }
+        },
+        {
+          "action_id": "act_6815a7ae9fb4880376698eea503905f0",
+          "session_id": "sess_33a3ba48cae780930acf3b4c316fa2f0",
+          "agent_id": "agent_12",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "resource_version": 1,
+          "args": {
+            "amount": "400.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "EXPIRED",
+          "execution_id": null,
+          "created_at": "2026-11-11T23:08:34.796674Z",
+          "approval": {
+            "nonce": "de30f917542c28ac59d2e2575dd5ca5d",
+            "expires_at": "2026-11-11T23:13:34.796782Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "kRSnhqYquaVuNeNbNTN82eeH/0r6wonii+2FEdkVzjY3NFkMHjXMS9XkOoJQR1WflJfENwQ9UqIwVutgNVtFAg==",
+            "payload": {
+              "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+              "action_id": "act_6815a7ae9fb4880376698eea503905f0",
+              "agent_id": "agent_12",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:34.796782Z",
+              "issued_at": "2026-11-11T23:08:35.401045Z",
+              "nonce": "de30f917542c28ac59d2e2575dd5ca5d",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_20",
+              "resource_version": 1,
+              "session_id": "sess_33a3ba48cae780930acf3b4c316fa2f0",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:35.402290Z"
+          }
+        },
+        {
+          "action_id": "act_147aa9b6983516dad7163cee0b273968",
+          "session_id": "sess_e9726b962798b560f87142e1073cd8ef",
+          "agent_id": "agent_13",
+          "tool": "issue_refund",
+          "resource_id": "acct_20",
+          "resource_version": 1,
+          "args": {
+            "amount": "400.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "FAILED",
+          "execution_id": "exec_89442305193fd5279a9e7adb5475172e",
+          "created_at": "2026-11-11T23:08:37.709519Z",
+          "approval": {
+            "nonce": "a17dbb10d49bd32f1cf353c190b02793",
+            "expires_at": "2026-11-11T23:13:37.709603Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "H2UFme5czrWznsGIwFNOUTLW1qI7Tse9iTEeHeRIxFRohX2932rMDlOvf7IwoBO7F/aQI5dsspMO+V1VqqRzDg==",
+            "payload": {
+              "action_hash": "sha256:4cbcb10e2118819868108e8b3d197799801bb821c7aa01a84b5382271e01181b",
+              "action_id": "act_147aa9b6983516dad7163cee0b273968",
+              "agent_id": "agent_13",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:13:37.709603Z",
+              "issued_at": "2026-11-11T23:08:38.304100Z",
+              "nonce": "a17dbb10d49bd32f1cf353c190b02793",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_20",
+              "resource_version": 1,
+              "session_id": "sess_e9726b962798b560f87142e1073cd8ef",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:08:38.305331Z"
+          }
+        },
+        {
+          "action_id": "act_70ac4de57c020d057d115d701d547c3f",
+          "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_26",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:d66a212bcea77bc0c178dd7afd714533aebb36036e2b6512722ae498a76e8fd4",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "COMMITTED",
+          "execution_id": "exec_92b364e543182153ed5f4c96a03088c1",
+          "created_at": "2026-11-11T23:20:55.823972Z",
+          "approval": {
+            "nonce": "cf546a182b04bf3322591bc12015858d",
+            "expires_at": "2026-11-11T23:25:55.824082Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "y2r+9aA+LVlsPPgELKPlHDYaAGOgM8Y/MkyH6Gm/R5fV2LsNjalezozQ4rSLwwSmc/uAYsX0IuVBMhCHrTKEBg==",
+            "payload": {
+              "action_hash": "sha256:d66a212bcea77bc0c178dd7afd714533aebb36036e2b6512722ae498a76e8fd4",
+              "action_id": "act_70ac4de57c020d057d115d701d547c3f",
+              "agent_id": "agent_31",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:25:55.824082Z",
+              "issued_at": "2026-11-11T23:20:56.438824Z",
+              "nonce": "cf546a182b04bf3322591bc12015858d",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_26",
+              "resource_version": 1,
+              "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:20:56.440443Z"
+          }
+        },
+        {
+          "action_id": "act_ceeabb7ba6ee69585cdb3e7e82cca10c",
+          "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_25",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:27e6439b45c52f98d89e2d3c7df9bb5bfdd55b9a157da91331a364ea3348c525",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "FAILED",
+          "execution_id": "exec_8977d220395217471412bf52c0adde62",
+          "created_at": "2026-11-11T23:21:09.581483Z",
+          "approval": {
+            "nonce": "bcaf371fba3decc8496d828fde71ca8a",
+            "expires_at": "2026-11-11T23:26:09.581571Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "Q53YIMXfoODrplU5YezI77apGmeLlSNEJVgf69YFmgm9nhl4rkfKtjJNQ0pIl85FlVS46KEevvoh2Vizo9EQDw==",
+            "payload": {
+              "action_hash": "sha256:27e6439b45c52f98d89e2d3c7df9bb5bfdd55b9a157da91331a364ea3348c525",
+              "action_id": "act_ceeabb7ba6ee69585cdb3e7e82cca10c",
+              "agent_id": "agent_31",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:26:09.581571Z",
+              "issued_at": "2026-11-11T23:21:10.198756Z",
+              "nonce": "bcaf371fba3decc8496d828fde71ca8a",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_25",
+              "resource_version": 1,
+              "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:21:10.200020Z"
+          }
+        },
+        {
+          "action_id": "act_7b629a0c8c33ff943b6ee7ad95e43d09",
+          "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+          "agent_id": "agent_31",
+          "tool": "issue_refund",
+          "resource_id": "acct_27",
+          "resource_version": 1,
+          "args": {
+            "amount": "100.00",
+            "currency": "EUR"
+          },
+          "action_hash": "sha256:fe8eb4826dc73e931380a719359c215e22088380d80b08f741f7652138f06ce9",
+          "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+          "canon_version": 1,
+          "provenance_version": 0,
+          "status": "FAILED",
+          "execution_id": "exec_975320a0da315d3e9d636decbf8eee19",
+          "created_at": "2026-11-11T23:21:23.349964Z",
+          "approval": {
+            "nonce": "eef4c12af2a0a6a98ceaa48cce8c7c4f",
+            "expires_at": "2026-11-11T23:26:23.350051Z",
+            "approver_id": "human_1",
+            "decision": "APPROVE",
+            "signature": "YCEBcVdp08Rx1IMG2l+8Q01skLfR+LE6ur3hL3Ig1peLOYCUj7mmaTZAVXLu61jDT60VDTU/SPpzThisy338CQ==",
+            "payload": {
+              "action_hash": "sha256:fe8eb4826dc73e931380a719359c215e22088380d80b08f741f7652138f06ce9",
+              "action_id": "act_7b629a0c8c33ff943b6ee7ad95e43d09",
+              "agent_id": "agent_31",
+              "approver_id": "human_1",
+              "canon_version": 1,
+              "decision": "APPROVE",
+              "expires_at": "2026-11-11T23:26:23.350051Z",
+              "issued_at": "2026-11-11T23:21:23.948158Z",
+              "nonce": "eef4c12af2a0a6a98ceaa48cce8c7c4f",
+              "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+              "provenance_version": 0,
+              "resource_id": "acct_27",
+              "resource_version": 1,
+              "session_id": "sess_76dd1174bd474daa64ef7cbc682dcbd0",
+              "tool": "issue_refund"
+            },
+            "decided_at": "2026-11-11T23:21:23.949369Z"
+          }
+        }
+      ],
+      "reservations": [
+        {
+          "action_id": "act_8f024e7c4bfa041edb5898aa4be50698",
+          "budget_key": "account_id:acct_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:15.438497Z"
+        },
+        {
+          "action_id": "act_8f024e7c4bfa041edb5898aa4be50698",
+          "budget_key": "agent_id:agent_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:15.438497Z"
+        },
+        {
+          "action_id": "act_f2628e93d16c37d3acfac6ee2289b4f7",
+          "budget_key": "account_id:acct_3",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:16.975621Z"
+        },
+        {
+          "action_id": "act_f2628e93d16c37d3acfac6ee2289b4f7",
+          "budget_key": "agent_id:agent_1",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:16.975621Z"
+        },
+        {
+          "action_id": "act_3b650e0708d6f1e206f831c0459949ff",
+          "budget_key": "account_id:acct_13",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:29.616110Z"
+        },
+        {
+          "action_id": "act_3b650e0708d6f1e206f831c0459949ff",
+          "budget_key": "agent_id:agent_21",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:29.616110Z"
+        },
+        {
+          "action_id": "act_3fb657d866a5b4124bba0e3b3dff120a",
+          "budget_key": "account_id:acct_10",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:29.619782Z"
+        },
+        {
+          "action_id": "act_3fb657d866a5b4124bba0e3b3dff120a",
+          "budget_key": "agent_id:agent_21",
+          "amount_cents": 25000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:29.619782Z"
+        },
+        {
+          "action_id": "act_68f105bb599c116b42edf116f437747c",
+          "budget_key": "account_id:acct_20",
+          "amount_cents": 40000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:41.525329Z"
+        },
+        {
+          "action_id": "act_68f105bb599c116b42edf116f437747c",
+          "budget_key": "agent_id:agent_11",
+          "amount_cents": 40000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:08:41.525329Z"
+        },
+        {
+          "action_id": "act_147aa9b6983516dad7163cee0b273968",
+          "budget_key": "account_id:acct_20",
+          "amount_cents": 40000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:08:41.529062Z"
+        },
+        {
+          "action_id": "act_147aa9b6983516dad7163cee0b273968",
+          "budget_key": "agent_id:agent_13",
+          "amount_cents": 40000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:08:41.529062Z"
+        },
+        {
+          "action_id": "act_70ac4de57c020d057d115d701d547c3f",
+          "budget_key": "account_id:acct_26",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:20:57.868926Z"
+        },
+        {
+          "action_id": "act_70ac4de57c020d057d115d701d547c3f",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "COMMITTED",
+          "created_at": "2026-11-11T23:20:57.868926Z"
+        },
+        {
+          "action_id": "act_ceeabb7ba6ee69585cdb3e7e82cca10c",
+          "budget_key": "account_id:acct_25",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:21:11.610431Z"
+        },
+        {
+          "action_id": "act_ceeabb7ba6ee69585cdb3e7e82cca10c",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:21:11.610431Z"
+        },
+        {
+          "action_id": "act_7b629a0c8c33ff943b6ee7ad95e43d09",
+          "budget_key": "account_id:acct_27",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:21:25.359193Z"
+        },
+        {
+          "action_id": "act_7b629a0c8c33ff943b6ee7ad95e43d09",
+          "budget_key": "agent_id:agent_31",
+          "amount_cents": 10000,
+          "state": "RELEASED",
+          "created_at": "2026-11-11T23:21:25.359193Z"
+        }
+      ],
+      "audit": {
+        "ok": true,
+        "events": 127
+      }
+    }
+  },
+  "baseline": {
+    "tools": {
+      "effective_executions": 2,
+      "refunds_by_account": {
+        "acct_29": 1
+      },
+      "deleted_documents": [
+        "doc_19"
+      ],
+      "modified_documents": [
+        "doc_19"
+      ],
+      "outbound_mail": 0,
+      "config_changed": [],
+      "execution_log": [
+        {
+          "idempotency_key": "direct-delete-without-approval-executor-token-file",
+          "tool": "delete_document",
+          "resource_id": "doc_19",
+          "request_hash": "82ce542b9cfe4ec52776da4a7d6a357b137f4570d8cf67cb1ba19237c195cb5d",
+          "args": {},
+          "status": "EXECUTED",
+          "http_status": 200
+        },
+        {
+          "idempotency_key": "direct-refund-above-any-limit-executor-token-file",
+          "tool": "issue_refund",
+          "resource_id": "acct_29",
+          "request_hash": "61cf5ee0516de9fe2c67932ce0c7ed84882760fd5f41def83e0d7ef1abb2125d",
+          "args": {
+            "amount": "900.00",
+            "currency": "EUR"
+          },
+          "status": "EXECUTED",
+          "http_status": 200
+        }
+      ]
+    }
+  }
+}
