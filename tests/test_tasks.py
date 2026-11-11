@@ -33,11 +33,19 @@ def rewritten(tmp_path, task_id, old, new, name=None):
     return path
 
 
+# Visible suites A and B, then the hidden set (tasks/hidden/HIDDEN_SET.md: H01-H04 in
+# suite A, H05-H10 in suite B).
+EXPECTED_SUITES = {
+    **{f"{suite}{n:02d}": suite for suite in "AB" for n in range(1, 11)},
+    **{f"H{n:02d}": "A" if n <= 4 else "B" for n in range(1, 11)},
+}
+
+
 def test_every_repository_task_is_valid_and_maps_to_a_tools_seed(tasks):
-    assert sorted(tasks) == [f"{suite}{n:02d}" for suite in "AB" for n in range(1, 11)]
+    assert sorted(tasks) == sorted(EXPECTED_SUITES)
     for task in tasks.values():
         Seed.model_validate(seed_of(task))
-        assert task.suite == task.id[0]
+        assert task.suite == EXPECTED_SUITES[task.id]
         assert 1 <= task.max_steps <= 100
 
 
