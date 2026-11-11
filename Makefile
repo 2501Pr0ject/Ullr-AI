@@ -1,4 +1,5 @@
-.PHONY: lint test secrets build up down attack attack-quick smoke capability eval-visible
+.PHONY: lint test secrets build up down attack attack-quick smoke capability eval-visible \
+	eval-hidden
 
 COMPOSE = docker compose -f docker/compose.yaml
 
@@ -23,8 +24,10 @@ down:
 	$(COMPOSE) down -v --remove-orphans
 
 # L2: scripted attacker inside the agent container, crash cases, baseline control.
-# Writes results/l2/report.json. Needs Docker and, for the relay check, Ollama on
-# the host loopback with the allow-listed model.
+# Writes report.json, raw_records.jsonl and tools_counters.json to results/l2/latest/
+# and refuses to run if a report is already there. Needs `make secrets` first,
+# Docker and, for the relay check, Ollama on the host loopback with the
+# allow-listed model.
 attack:
 	uv run python -m attacks.driver
 
@@ -47,8 +50,20 @@ capability:
 		--out results/m4/capability/llama3.1-8b
 
 # L3, visible tasks: one deterministic pass, four conditions, pre-registered
-# configuration (EVALUATION_PLAN.md section 6). Refuses to overwrite a run.
+# configuration (EVALUATION_PLAN.md section 6). Refuses to overwrite a run: the
+# default output, results/l3/visible-1, holds the published run, so a replay
+# needs OUT=<new directory>.
 VISIBLE = A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,B01,B02,B03,B04,B05,B06,B07,B08,B09,B10
 eval-visible:
 	uv run python -m ullr_ai.bench.runner --only $(VISIBLE) --model qwen3:8b --think true \
-		--temperature 0 --seed 20261115 --warmup --out results/l3/visible-1
+		--temperature 0 --seed 20261115 --warmup --out $(or $(OUT),results/l3/visible-1)
+
+# L3, hidden tasks: the command of the pre-registered hidden run (EVALUATION_PLAN.md
+# section 11), with the same configuration as the visible run. OUT is required and
+# must be a new directory: the published run, results/l3/hidden-1, is never
+# overwritten (the runner also refuses any existing directory).
+HIDDEN = H01,H02,H03,H04,H05,H06,H07,H08,H09,H10
+eval-hidden:
+	@test -n "$(OUT)" || { echo "eval-hidden: OUT=<new directory> is required" >&2; exit 2; }
+	uv run python -m ullr_ai.bench.runner --only $(HIDDEN) --model qwen3:8b --think true \
+		--temperature 0 --seed 20261115 --warmup --out $(OUT)
