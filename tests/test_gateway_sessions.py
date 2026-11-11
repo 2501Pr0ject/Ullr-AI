@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from conftest import (
+    APPROVERS,
     DEFAULT_POLICY,
     EXECUTOR_TOKEN,
     GATEWAY_ADMIN_TOKEN,
@@ -27,6 +28,7 @@ from conftest import (
 from test_gateway_api import forwarding_transport
 from ullr_ai import storage
 from ullr_ai.gateway import app as gateway_app
+from ullr_ai.gateway import approvals
 from ullr_ai.tools_service.state import Seed
 
 ADMIN = bearer(GATEWAY_ADMIN_TOKEN)
@@ -685,3 +687,31 @@ def test_state_view_requires_the_admin_token_and_changes_nothing(env):
     assert audit_events(env) == before
     for secret in (agent["Authorization"].removeprefix("Bearer "), GATEWAY_ADMIN_TOKEN):
         assert secret not in str(view)
+
+
+def test_state_view_carries_arguments_and_the_stored_approval_record(env):
+    _, agent = new_session(env)
+    refund = {"amount": "10.00", "currency": "EUR"}
+    propose(env, agent, "read_document", "doc_1")
+    action_id = approved(env, agent, "issue_refund", "acct_1", refund)
+    pending = propose(env, agent, "delete_document", "doc_1").json()["action_id"]
+
+    view = env.admin.get("/admin/state", headers=ADMIN).json()
+    read, approved_action, waiting = view["actions"]
+    assert (read["args"], read["approval"]) == ({}, None)
+    assert approved_action["action_id"] == action_id
+    assert approved_action["args"] == refund
+    assert approved_action["status"] == "APPROVED"
+
+    # The record is enough to re-run the Gateway's own decision check elsewhere.
+    approval = approved_action["approval"]
+    record = {**approved_action, **approval}
+    payload = approvals.check_decision(
+        record, approval["payload"], approval["signature"], APPROVERS
+    )
+    assert (payload.decision, payload.approver_id) == ("APPROVE", "human_1")
+
+    assert waiting["action_id"] == pending
+    assert waiting["approval"]["nonce"]
+    assert waiting["approval"]["signature"] is None
+    assert waiting["approval"]["payload"] is None

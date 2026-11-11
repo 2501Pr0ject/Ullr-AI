@@ -207,16 +207,40 @@ class Gateway:
         return reconcile(self, include_executing=False)
 
     def state(self) -> Reply:
-        """Read-only view for the controller: actions, reservations, audit check."""
+        """Read-only view for the controller: actions with their arguments and
+        approval records, reservations, audit check."""
         conn = storage.connect(self.db_path)
         try:
-            actions = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT action_id, session_id, agent_id, tool, resource_id, status,"
-                    " execution_id, created_at FROM actions ORDER BY created_at"
-                )
-            ]
+            actions = []
+            for row in conn.execute(
+                "SELECT a.action_id, a.session_id, a.agent_id, a.tool, a.resource_id,"
+                " a.resource_version, a.args, a.action_hash, a.policy_hash, a.canon_version,"
+                " a.provenance_version, a.status, a.execution_id, a.created_at,"
+                " p.nonce, p.expires_at, p.approver_id, p.decision, p.signature, p.payload,"
+                " p.decided_at, p.action_id IS NOT NULL AS has_approval"
+                " FROM actions a LEFT JOIN approvals p USING (action_id)"
+                " ORDER BY a.created_at, a.rowid"
+            ):
+                action = dict(row)
+                action["args"] = json.loads(action["args"])
+                # The approval record as stored, so that a reader holding the
+                # approver registry can verify the binding and the signature itself.
+                approval = {
+                    name: action.pop(name)
+                    for name in (
+                        "nonce",
+                        "expires_at",
+                        "approver_id",
+                        "decision",
+                        "signature",
+                        "payload",
+                        "decided_at",
+                    )
+                }
+                if approval["payload"] is not None:
+                    approval["payload"] = json.loads(approval["payload"])
+                action["approval"] = approval if action.pop("has_approval") else None
+                actions.append(action)
             reservations = [
                 dict(row)
                 for row in conn.execute(
