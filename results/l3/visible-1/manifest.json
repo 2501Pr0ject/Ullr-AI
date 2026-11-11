@@ -1,0 +1,260 @@
+{
+  "code_commit": "b31b75a506567353b22259f76a3009488f1ef047",
+  "working_tree_clean": true,
+  "image_id": "sha256:cf2edb7a9d6d7f222b43aa64a100ceba42dd95dde4a1aa2d0e1762be8bfbcd2c",
+  "relay": "llm-relay service of the image above",
+  "ollama_version": "0.40.13",
+  "model": "qwen3:8b",
+  "model_digests": {
+    "qwen3:8b": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+  },
+  "policy_hash": "sha256:8fdf4b427ad92cb8d72a203bd14c974ef63635e9a455015e3bb99e47e47d6392",
+  "canon_version": 1,
+  "system_prompt_hash": "sha256:ae593c50af5c1e9f34a563091555c7f1616d9159a0794556d9090e35f02b9fa4",
+  "tool_definitions_hash": "sha256:a88e8a342daa0766d5821dc45b6d7a97e0d0c99aa343e29527ee15be8546d5ed",
+  "temperature": 0.0,
+  "seed": 20261115,
+  "think": true,
+  "warmup": {
+    "http_status": 200,
+    "seconds": 9.4
+  },
+  "repetitions": 1,
+  "order_seed": 1,
+  "condition_order": {
+    "A01": [
+      "AP-rubber",
+      "AP-oracle",
+      "AP-provenance",
+      "baseline"
+    ],
+    "A02": [
+      "AP-oracle",
+      "baseline",
+      "AP-rubber",
+      "AP-provenance"
+    ],
+    "A03": [
+      "AP-rubber",
+      "AP-provenance",
+      "AP-oracle",
+      "baseline"
+    ],
+    "A04": [
+      "AP-provenance",
+      "baseline",
+      "AP-rubber",
+      "AP-oracle"
+    ],
+    "A05": [
+      "AP-oracle",
+      "AP-provenance",
+      "AP-rubber",
+      "baseline"
+    ],
+    "A06": [
+      "AP-rubber",
+      "AP-oracle",
+      "baseline",
+      "AP-provenance"
+    ],
+    "A07": [
+      "AP-oracle",
+      "AP-rubber",
+      "baseline",
+      "AP-provenance"
+    ],
+    "A08": [
+      "AP-rubber",
+      "baseline",
+      "AP-oracle",
+      "AP-provenance"
+    ],
+    "A09": [
+      "AP-rubber",
+      "AP-oracle",
+      "baseline",
+      "AP-provenance"
+    ],
+    "A10": [
+      "AP-rubber",
+      "AP-provenance",
+      "baseline",
+      "AP-oracle"
+    ],
+    "B01": [
+      "AP-oracle",
+      "AP-rubber",
+      "baseline",
+      "AP-provenance"
+    ],
+    "B02": [
+      "baseline",
+      "AP-provenance",
+      "AP-rubber",
+      "AP-oracle"
+    ],
+    "B03": [
+      "AP-rubber",
+      "AP-oracle",
+      "AP-provenance",
+      "baseline"
+    ],
+    "B04": [
+      "AP-provenance",
+      "AP-oracle",
+      "baseline",
+      "AP-rubber"
+    ],
+    "B05": [
+      "AP-provenance",
+      "AP-oracle",
+      "baseline",
+      "AP-rubber"
+    ],
+    "B06": [
+      "AP-provenance",
+      "AP-oracle",
+      "baseline",
+      "AP-rubber"
+    ],
+    "B07": [
+      "AP-provenance",
+      "baseline",
+      "AP-oracle",
+      "AP-rubber"
+    ],
+    "B08": [
+      "AP-provenance",
+      "baseline",
+      "AP-oracle",
+      "AP-rubber"
+    ],
+    "B09": [
+      "AP-rubber",
+      "AP-oracle",
+      "baseline",
+      "AP-provenance"
+    ],
+    "B10": [
+      "AP-oracle",
+      "AP-provenance",
+      "AP-rubber",
+      "baseline"
+    ]
+  },
+  "tasks_directory": "/Users/abdeltouati/Documents/Ullr-AI/tasks",
+  "tasks": {
+    "A01": {
+      "file_hash": "sha256:eb3ae3c61914dd855b714d153c9b868b6bdc1f8611b847901f355b99dbda33ba",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A02": {
+      "file_hash": "sha256:fe83ce241a167f2c4e6814fde6783b83a614c13d50eef741af0346f73f787537",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A03": {
+      "file_hash": "sha256:70da75e53e8d09655e17ec25c74c112967b63930749e91430b0a1f407b61636b",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A04": {
+      "file_hash": "sha256:158fcffd98d747d9ca63e674a02af3e7bca41a2fc28e9a8e72cc70611322cc75",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A05": {
+      "file_hash": "sha256:e77594b1c39fa2185c485668d3ac8f471b8b585e8aa158681532db06f1728496",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A06": {
+      "file_hash": "sha256:bc6e00d0c8c04c5daee36e48577dc112d2275cbf468a4d3e191e0258d6b1d374",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A07": {
+      "file_hash": "sha256:6f66c04f1a533ba681821272b7f01278a0093b2bdbf202074bc4024244435ea5",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A08": {
+      "file_hash": "sha256:3d6bb53f75daef2cfeb835c4ce2c902807e69c9a367d6b29fff92074eecfe13e",
+      "max_steps": 20,
+      "faults": []
+    },
+    "A09": {
+      "file_hash": "sha256:26609cb914aef4ad3f07506911943b15b7841d949a9cdb1ba81ab51e9fb5cd10",
+      "max_steps": 20,
+      "faults": [
+        {
+          "match": {
+            "tool": "send_email"
+          },
+          "on_call": 1,
+          "effect": "timeout_after_commit"
+        }
+      ]
+    },
+    "A10": {
+      "file_hash": "sha256:5ec60271cf2e310ec53ded5793be795fc6e3a8cbc45a7bc17fd7cfc2b65fa395",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B01": {
+      "file_hash": "sha256:5f4350a47a1547e4bd75759111e41147ac488f9308a1d7faccbd27597700e9d5",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B02": {
+      "file_hash": "sha256:7ed23cfac8d3b03f591534c1b1b41e2623af5d8caa8c17bfbbd701e6b4427929",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B03": {
+      "file_hash": "sha256:7b9f8eb2ce9e60004351aafba612f7623be15fe00bbb71ef69e7b2444408f842",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B04": {
+      "file_hash": "sha256:e40cac1de55da1a9c1a509dd609c469c3736fce4e2cf222b51a3f0b8fbb52fd0",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B05": {
+      "file_hash": "sha256:90c957adeb61147446d64c6bbded79ab753382d52ca074285889ef17ae07d4d9",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B06": {
+      "file_hash": "sha256:3ec9d14f34540688bb8d0bf04806732249f3cd5d9757a2c5c27df53e56934b20",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B07": {
+      "file_hash": "sha256:38ff361ab24597e32b2992b13df80a4fafda31793248f9052f5f0784ce2d4f98",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B08": {
+      "file_hash": "sha256:eb69831c7db35c00236678d84fd689568d455e4402ea16f8c8eb55ffb1cc4725",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B09": {
+      "file_hash": "sha256:253cd6bf007d19dab73e4edff1fa8a8e3fae02583cbf24704f23e7c2e6b8c2fb",
+      "max_steps": 20,
+      "faults": []
+    },
+    "B10": {
+      "file_hash": "sha256:b3291ecd4eab3aa16d0aa7226b09cac6d5826dabdc153c770d237f0d8ed7860e",
+      "max_steps": 20,
+      "faults": []
+    }
+  },
+  "fault_seed": null,
+  "python": "3.12.9",
+  "docker": "27.4.0"
+}
