@@ -82,7 +82,8 @@ def run(
         elapsed = round((clock() - started) * 1000, 1)
         message = reply.get("message") if type(reply) is dict else None
         if type(message) is not dict:
-            events.append({"type": "model_error", "turn": turn, "ms": elapsed})
+            error = reply.get("error") if type(reply) is dict else None
+            events.append({"type": "model_error", "turn": turn, "ms": elapsed, "error": error})
             return finish("model_error")
 
         calls = message.get("tool_calls") or []

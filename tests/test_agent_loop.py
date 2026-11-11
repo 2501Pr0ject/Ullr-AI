@@ -172,6 +172,8 @@ def test_model_failure_ends_the_episode():
         transcript = run(Script(reply), Recorder())
         assert transcript["end_reason"] == "model_error"
         assert transcript["events"][-1]["type"] == "model_error"
+    transcript = run(Script({"error": "request_timeout"}), Recorder())
+    assert transcript["events"][-1]["error"] == "request_timeout"
 
 
 def test_malformed_tool_call_is_recorded_and_forwarded_as_an_unknown_tool():

@@ -28,12 +28,22 @@ def main() -> int:
     env = os.environ
     relay = httpx.Client(base_url=env["ULLR_RELAY_URL"], timeout=600.0)
 
-    def chat(request: dict[str, Any]) -> dict[str, Any] | None:
+    def chat(request: dict[str, Any]) -> dict[str, Any]:
+        """The model's reply, or ``{"error": ...}`` saying why there is none."""
         try:
             response = relay.post("/api/chat", json=request)
-            return response.json() if response.status_code == 200 else None
-        except (httpx.HTTPError, ValueError):
-            return None
+        except httpx.TimeoutException:
+            return {"error": "request_timeout"}
+        except httpx.HTTPError as exc:
+            return {"error": type(exc).__name__}
+        try:
+            body = response.json()
+        except ValueError:
+            return {"error": f"http_{response.status_code}_unreadable"}
+        if response.status_code != 200:
+            code = body.get("error") if type(body) is dict else None
+            return {"error": f"http_{response.status_code}_{code}"}
+        return body
 
     if episode["routing"] == "gateway":
         token = Path(env.get("ULLR_AGENT_TOKEN_FILE", "/run/episode/agent_token"))
