@@ -4,16 +4,17 @@ Ullr ships with ten simulated tools and one reference Tools service. This guide 
 
 The security argument has two halves. The Gateway decides and records. The backend refuses what the Gateway has not authorized, or at least refuses anyone who does not hold the Gateway's credential, and executes each authorized action at most once. A backend that skips its half breaks guarantees G1, G2 and G7 ([`THREAT_MODEL.md`](THREAT_MODEL.md) §8), whatever the Gateway does.
 
-## 1. Declare the tool in four places
+## 1. Declare the tool
 
-There is no plugin system: a tool is declared in code, in four places that must agree. A tool missing from any of them is refused (default deny).
+There is no plugin system: a tool is declared in code. Three declarations take part in enforcement and must agree, together with the tool's entry in the policy (section 2). A tool missing from any of them is refused (default deny).
 
 | Place | What to add | Why it is in code |
 |---|---|---|
 | `src/ullr_ai/gateway/policy.py`, `TOOL_TIERS` | The tool's tier: `R0` read, `R1` reversible, `R2` irreversible | The policy file cannot reclassify a tool: a policy that states another tier fails to load. |
 | `src/ullr_ai/gateway/schemas.py`, `TOOLS` | The resource identifier pattern (or none) and a strict schema for every argument | Canonicalization and the action hash depend on it. Values are rejected, never repaired. |
 | The backend (here `src/ullr_ai/tools_service/executions.py`, `MUTATING_TOOLS` and `_apply`) | The effect | See section 4. |
-| `src/ullr_ai/agent/tools.py` | The definition the model sees and the mapping from a tool call to an action | Only for the benchmark agent; another agent needs its own mapping. |
+
+**The benchmark agent's mapping is not part of enforcement.** `src/ullr_ai/agent/tools.py` holds the tool definitions the evaluation's model sees and the mapping from a model's tool call to an action. It concerns only the benchmark agent: another agent needs its own mapping. It is not a security boundary of the Gateway. The Gateway never relies on it, and a compromised agent can send any action without it; the action is then checked against the tier, the schema and the policy like any other.
 
 **Choosing the tier.** Classify by effect, not by name. A tool that can destroy data through a "reversible" path is R2: in the hidden set, H09 destroys a document through `update_document` (R1), which the reference policy allows without approval. That is a pre-registered weakness of tiering by tool ([`tasks/hidden/HIDDEN_SET.md`](../tasks/hidden/HIDDEN_SET.md)). When in doubt, use R2.
 
@@ -70,7 +71,8 @@ The reference topology relies on Docker Desktop for macOS: `host.docker.internal
 ## 6. Audit, errors and retries
 
 - **Audit.** Every security state transition writes its audit event in the same SQLite transaction; `verify-audit` checks the hash chain. Truncation of the tail is not detected, and nothing is anchored outside the host. For bypass measurement, cross-check the backend's execution log against the Gateway's actions, as `metrics.unbacked_executions` does: the audit log alone is not enough.
-- **Errors fail closed.** A failure to write the audit, to reach the backend or to parse a reply means no execution. A timeout after the call leaves the action `UNKNOWN`, with its budget reserved, until reconciliation resolves the key. Reconciliation runs periodically and at start-up.
+- **Errors before the request reaches the backend fail closed.** A malformed proposal, a denial, a stale or invalid approval, an exceeded budget or a failure to write the audit in the authorization transaction rolls that transaction back: nothing is sent to the backend, so nothing is executed.
+- **After the request has been sent, an error does not prove that nothing happened.** The backend may have applied the effect before the connection failed, the call timed out or its reply turned out unreadable. The Gateway takes only two replies as an outcome: a confirmed execution, and a confirmed non-execution with an error code the backend guarantees (`CONFIRMED_NOT_EXECUTED` in `src/ullr_ai/gateway/executor_client.py`). Anything else is ambiguous. A mutation is then left `UNKNOWN`, with its budget held, until reconciliation asks the backend what happened to its idempotency key and records `COMMITTED`, or `FAILED` after burning the key. A read in that case is `FAILED`, and its content is not returned. Reconciliation of `UNKNOWN` actions runs periodically. At start-up it also covers actions still `EXECUTING`, for instance when recording a confirmed execution failed after the backend applied it. All of this rests on the backend's idempotency keys (section 4): without them an ambiguous outcome can be neither resolved nor safely retried.
 - **Retries.** An agent that retries after an unknown outcome creates a new proposal and needs a new approval: an approval is never reused. Your backend must not apply an effect from a burned key.
 
 ## 7. Limits that carry over
