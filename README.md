@@ -1,6 +1,6 @@
 # Ullr-AI
 
-A deterministic gateway between an AI agent and its tools. It is designed so that an agent cannot execute an action classified as irreversible (R2) without a matching signed approval, even if the agent runtime is fully compromised, provided the isolation boundary and the trusted components remain intact.
+Ullr is a security harness for tool-calling agents. It acts as a deterministic gateway between an agent and its tools, designed to prevent any action classified as irreversible (R2) from executing without a matching signed approval — even if the agent runtime is fully compromised, provided the isolation boundary and trusted components remain intact.
 
 **Author:** Abdelatif Touati — [github.com/2501Pr0ject](https://github.com/2501Pr0ject) · [2501project.dev](https://2501project.dev)
 
